@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Panel from './Panel'
-import { useChat, useChatAvailability, useChatSessions } from '../hooks/useChat'
+import { useChat, useChatAvailability, useChatSessions, loadSavedSessions } from '../hooks/useChat'
 import SessionSidebar from './chat/SessionSidebar'
 import MessageThread from './chat/MessageThread'
 import Composer from './chat/Composer'
@@ -16,7 +16,6 @@ export default function ChatPanel() {
     error,
     sendMessage,
     cancelStream,
-    loadHistory,
   } = useChat(activeSessionId)
 
   const handleCreateSession = useCallback(async () => {
@@ -35,12 +34,43 @@ export default function ChatPanel() {
     [activeSessionId, sendMessage]
   )
 
-  // Create initial session if none exist and chat is available
+  const restoringRef = useRef(false)
+
+  // Re-create backend sessions for persisted sessions lost on server restart
   useEffect(() => {
-    if (!checkingAvailability && chatAvailable && sessions.length === 0 && !loadingSessions) {
+    if (checkingAvailability || !chatAvailable || loadingSessions || restoringRef.current) return
+
+    const saved = loadSavedSessions()
+
+    if (sessions.length === 0 && saved.length > 0) {
+      // Backend lost sessions (server restart) — re-create and migrate messages
+      restoringRef.current = true
+      ;(async () => {
+        const idMap: Array<{ oldId: string; newId: string }> = []
+        for (const s of saved) {
+          const created = await createSession()
+          if (created) {
+            idMap.push({ oldId: s.id, newId: created.id })
+            // Migrate localStorage messages from old ID to new ID
+            const oldKey = `hud-chat-msgs-${s.id}`
+            const raw = localStorage.getItem(oldKey)
+            if (raw) {
+              localStorage.setItem(`hud-chat-msgs-${created.id}`, raw)
+              localStorage.removeItem(oldKey)
+            }
+          }
+        }
+        // Select the first restored session
+        if (idMap.length > 0) {
+          setActiveSessionId(idMap[0].newId)
+        }
+        restoringRef.current = false
+      })()
+    } else if (sessions.length === 0 && saved.length === 0) {
+      // Truly fresh — create initial session
       handleCreateSession()
     }
-  }, [checkingAvailability, chatAvailable, sessions.length, loadingSessions, handleCreateSession])
+  }, [checkingAvailability, chatAvailable, sessions.length, loadingSessions, createSession, handleCreateSession])
 
   // Auto-select first session when sessions exist but none is active
   useEffect(() => {
@@ -48,13 +78,6 @@ export default function ChatPanel() {
       setActiveSessionId(sessions[0].id)
     }
   }, [activeSessionId, sessions])
-
-  // Load history when session changes
-  useEffect(() => {
-    if (activeSessionId) {
-      loadHistory()
-    }
-  }, [activeSessionId, loadHistory])
 
   // Show loading while checking availability
   if (checkingAvailability) {

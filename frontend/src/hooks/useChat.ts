@@ -19,6 +19,48 @@ export interface ChatMessage {
   isStreaming?: boolean
 }
 
+// ── localStorage helpers ───────────────────────────────────────────────────
+
+const MESSAGES_KEY = (id: string) => `hud-chat-msgs-${id}`
+const SESSIONS_KEY = 'hud-chat-sessions'
+
+function saveMessages(sessionId: string, msgs: ChatMessage[]) {
+  try {
+    const serializable = msgs.map(m => ({ ...m, isStreaming: false }))
+    localStorage.setItem(MESSAGES_KEY(sessionId), JSON.stringify(serializable))
+  } catch { /* quota exceeded — silently skip */ }
+}
+
+function loadMessages(sessionId: string): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(MESSAGES_KEY(sessionId))
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as ChatMessage[]
+    return parsed.map(m => ({ ...m, timestamp: new Date(m.timestamp) }))
+  } catch { return [] }
+}
+
+function removeMessages(sessionId: string) {
+  localStorage.removeItem(MESSAGES_KEY(sessionId))
+}
+
+export function saveSessions(sessions: Array<{ id: string; title: string; backend_type: string; is_active: boolean }>) {
+  try {
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions))
+  } catch { /* quota exceeded */ }
+}
+
+export function loadSavedSessions(): Array<{ id: string; title: string; backend_type: string; is_active: boolean }> {
+  try {
+    const raw = localStorage.getItem(SESSIONS_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch { return [] }
+}
+
+export function clearSessionStorage(sessionId: string) {
+  removeMessages(sessionId)
+}
+
 export interface ComposerState {
   model: string
   isStreaming: boolean
@@ -67,9 +109,10 @@ export function useChat(sessionId: string | null) {
     currentAssistantMessageRef.current = ''
     currentToolCallsRef.current = {}
 
-    // Restore cached messages for the incoming session (or empty for new sessions)
+    // Restore cached messages for the incoming session (memory → localStorage → empty)
     if (sessionId) {
-      setMessages(messageCacheRef.current.get(sessionId) ?? [])
+      const cached = messageCacheRef.current.get(sessionId)
+      setMessages(cached ?? loadMessages(sessionId))
     } else {
       setMessages([])
     }
@@ -81,6 +124,10 @@ export function useChat(sessionId: string | null) {
   useEffect(() => {
     if (sessionId) {
       messageCacheRef.current.set(sessionId, messages)
+      // Persist to localStorage (skip empty arrays to avoid overwriting stored history)
+      if (messages.length > 0) {
+        saveMessages(sessionId, messages)
+      }
     }
   }, [sessionId, messages])
 
@@ -291,11 +338,6 @@ export function useChat(sessionId: string | null) {
     }
   }, [sessionId])
 
-  const loadHistory = useCallback(async () => {
-    // History is managed client-side via messageCacheRef.
-    // The backend does not persist message history, so this is a no-op.
-  }, [])
-
   const loadComposerState = useCallback(async () => {
     if (!sessionId) return
 
@@ -321,7 +363,6 @@ export function useChat(sessionId: string | null) {
     error,
     sendMessage,
     cancelStream,
-    loadHistory,
     loadComposerState,
   }
 }
@@ -362,7 +403,7 @@ export function useChatAvailability() {
 }
 
 export function useChatSessions() {
-  const [sessions, setSessions] = useState<Array<{ id: string; title: string; backend_type: string; is_active: boolean }>>([])
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string; backend_type: string; is_active: boolean }>>(() => loadSavedSessions())
   const [loading, setLoading] = useState(false)
 
   const loadSessions = useCallback(async () => {
@@ -372,6 +413,10 @@ export function useChatSessions() {
       if (response.ok) {
         const data = await response.json()
         setSessions(data)
+        // Only persist non-empty lists — avoids clobbering saved sessions on server restart
+        if (data.length > 0) {
+          saveSessions(data)
+        }
       }
     } catch (err) {
       console.error('Failed to load sessions:', err)
@@ -404,6 +449,7 @@ export function useChatSessions() {
         method: 'DELETE',
       })
       if (response.ok) {
+        clearSessionStorage(sessionId)
         await loadSessions()
         return true
       }
