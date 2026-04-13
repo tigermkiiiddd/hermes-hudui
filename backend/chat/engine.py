@@ -24,6 +24,9 @@ from .streamer import ChatStreamer
 
 # Regex to match box-drawing decoration lines from hermes CLI output
 _BOX_DRAWING_RE = re.compile(r'^[\s\r]*[╭╮╰╯│─┌┐└┘├┤┬┴┼◉◈●▸▹▶▷■□▪▫]+[\s─╭╮╰╯│┌┐└┘├┤┬┴┼]*$')
+# Lines starting with a box border character — top/bottom borders or panel content
+_BOX_BORDER_START_RE = re.compile(r'^[\s\r]*[╭╰┌└]─')
+_BOX_CONTENT_RE = re.compile(r'^[\s\r]*│(.*)│[\s\r]*$')
 _SESSION_ID_RE = re.compile(r'^session_id:\s+(\S+)')
 _HEADER_RE = re.compile(r'[╭╰][\s─]*[◉◈●]?\s*(MOTHER|HERMES|hermes)\s*[─╮╯]')
 # Hermes system warning lines (context compression, etc.) — not part of the model response
@@ -219,7 +222,15 @@ class ChatEngine:
                 return True
             if _BOX_DRAWING_RE.match(stripped):
                 return True
+            # Top/bottom border lines (╭─ ... or ╰─ ...) — skip entirely
+            if _BOX_BORDER_START_RE.match(line):
+                return True
             return False
+
+        def _extract_box_content(line: str) -> str | None:
+            """If line is │ content │, return the inner content. Otherwise None."""
+            m = _BOX_CONTENT_RE.match(line)
+            return m.group(1).strip() if m else None
 
         def run_subprocess():
             try:
@@ -264,6 +275,15 @@ class ChatEngine:
                     # Skip single-line decoration (box drawing, headers)
                     if _is_decoration_line(text):
                         continue
+
+                    # Extract content from │ ... │ box lines
+                    box_inner = _extract_box_content(text)
+                    if box_inner is not None:
+                        if box_inner:
+                            text = box_inner + "\n"
+                            stripped = text.strip()
+                        else:
+                            continue  # empty box line
 
                     # Skip leading empty lines before content starts
                     if not started_content and not stripped:

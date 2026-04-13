@@ -93,6 +93,7 @@ export function useChat(sessionId: string | null) {
   const eventSourceRef = useRef<EventSource | null>(null)
   const currentAssistantMessageRef = useRef<string>('')
   const currentToolCallsRef = useRef<Record<string, ToolCall>>({})
+  const rafRef = useRef<number | null>(null)
   // Client-side message cache: sessionId → messages
   const messageCacheRef = useRef<Map<string, ChatMessage[]>>(new Map())
   const prevSessionIdRef = useRef<string | null>(null)
@@ -158,6 +159,10 @@ export function useChat(sessionId: string | null) {
       return
     }
 
+    const flushRaf = () => {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+    }
+
     setError(null)
     setIsStreaming(true)
     currentAssistantMessageRef.current = ''
@@ -207,13 +212,18 @@ export function useChat(sessionId: string | null) {
         switch (data.type) {
           case 'token':
             currentAssistantMessageRef.current += (data.data.text as string) || ''
-            setMessages(prev =>
-              prev.map(msg =>
-                msg.id === assistantMessageId
-                  ? { ...msg, content: currentAssistantMessageRef.current }
-                  : msg
-              )
-            )
+            if (!rafRef.current) {
+              rafRef.current = requestAnimationFrame(() => {
+                rafRef.current = null
+                setMessages(prev =>
+                  prev.map(msg =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, content: currentAssistantMessageRef.current }
+                      : msg
+                  )
+                )
+              })
+            }
             break
 
           case 'tool_start':
@@ -258,11 +268,12 @@ export function useChat(sessionId: string | null) {
             break
 
           case 'done':
+            flushRaf()
             setIsStreaming(false)
             setMessages(prev =>
               prev.map(msg =>
                 msg.id === assistantMessageId
-                  ? { ...msg, isStreaming: false }
+                  ? { ...msg, isStreaming: false, content: currentAssistantMessageRef.current }
                   : msg
               )
             )
@@ -270,6 +281,7 @@ export function useChat(sessionId: string | null) {
             break
 
           case 'error':
+            flushRaf()
             setError(data.data.message as string)
             setIsStreaming(false)
             setMessages(prev =>
@@ -285,7 +297,7 @@ export function useChat(sessionId: string | null) {
       }
 
       eventSource.onerror = () => {
-        // Unconditional cleanup — don't guard on `isStreaming` (stale closure)
+        flushRaf()
         setIsStreaming(false)
         setMessages(prev =>
           prev.map(msg =>
@@ -330,6 +342,7 @@ export function useChat(sessionId: string | null) {
       eventSourceRef.current = null
     }
 
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
     setIsStreaming(false)
     // Mark the last assistant message as no longer streaming
     setMessages(prev =>
