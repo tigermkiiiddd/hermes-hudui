@@ -11,7 +11,6 @@ from .models import (
     ToolStatus,
 )
 from .streamer import ChatStreamer
-from .fallback_tmux import TmuxChatFallback
 
 __all__ = [
     "ChatEngine",
@@ -25,5 +24,4 @@ __all__ = [
     "ToolCall",
     "ToolStatus",
     "ChatStreamer",
-    "TmuxChatFallback",
 ]

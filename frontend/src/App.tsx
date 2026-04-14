@@ -7,7 +7,6 @@ import BootScreen from './components/BootScreen'
 import DashboardPanel from './components/DashboardPanel'
 import MemoryPanel from './components/MemoryPanel'
 import SkillsPanel from './components/SkillsPanel'
-import SessionsPanel from './components/SessionsPanel'
 import CronPanel from './components/CronPanel'
 import ProjectsPanel from './components/ProjectsPanel'
 import HealthPanel from './components/HealthPanel'
@@ -24,14 +23,13 @@ function TabContent({ tab }: { tab: TabId }) {
     case 'dashboard': return <DashboardPanel />
     case 'memory': return <MemoryPanel />
     case 'skills': return <SkillsPanel />
-    case 'sessions': return <SessionsPanel />
     case 'cron': return <CronPanel />
     case 'projects': return <ProjectsPanel />
     case 'health': return <HealthPanel />
     case 'agents': return <AgentsPanel />
     case 'chat': return <ChatPanel />
     case 'profiles': return <ProfilesPanel />
-    case 'token-costs': return <TokenCostsPanel />
+    case 'costs': return <TokenCostsPanel />
     case 'corrections': return <CorrectionsPanel />
     case 'patterns': return <PatternsPanel />
     default: return <DashboardPanel />
@@ -43,14 +41,13 @@ const GRID_CLASS: Record<TabId, string> = {
   dashboard: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
   memory: 'grid-cols-1 sm:grid-cols-2',
   skills: 'grid-cols-1 lg:grid-cols-[2fr_1fr]',
-  sessions: 'grid-cols-1 lg:grid-cols-[2fr_1fr]',
   cron: 'grid-cols-1',
   projects: 'grid-cols-1',
   health: 'grid-cols-1 sm:grid-cols-2',
   agents: 'grid-cols-1 lg:grid-cols-2',
-  chat: 'grid-cols-1',  // Full width for chat
+  chat: 'grid-cols-1',
   profiles: 'grid-cols-1',
-  'token-costs': 'grid-cols-1 lg:grid-cols-2',
+  costs: 'grid-cols-1 lg:grid-cols-2',
   corrections: 'grid-cols-1',
   patterns: 'grid-cols-1 lg:grid-cols-2',
 }

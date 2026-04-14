@@ -1,21 +1,31 @@
-"""Collect project data from ~/projects/."""
+"""Collect project data from state.db projects table."""
 
 from __future__ import annotations
 
+import logging
 import os
-
-from .utils import default_projects_dir
+import sqlite3
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from ..cache import get_cached_or_compute
+from .utils import default_hermes_dir
+
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class ProjectInfo:
     name: str
-    path: str
+    path: Optional[str] = None
+    description: Optional[str] = None
+    session_count: int = 0
+    created_at: Optional[float] = None
+    updated_at: Optional[float] = None
+    # Git info (populated if path is set and is a git repo)
     is_git: bool = False
     branch: Optional[str] = None
     last_commit_msg: Optional[str] = None
@@ -32,6 +42,8 @@ class ProjectInfo:
 
     @property
     def status_label(self) -> str:
+        if not self.path:
+            return "logical"
         if not self.is_git:
             return "no git"
         if self.dirty_files > 0:
@@ -41,13 +53,14 @@ class ProjectInfo:
     @property
     def activity_level(self) -> str:
         """Rough activity bucket based on last commit time."""
+        if not self.path:
+            return "logical"
         if not self.last_commit_ago:
             return "unknown"
         ago = self.last_commit_ago.lower()
         if any(x in ago for x in ["minute", "hour", "second"]):
             return "active"
         if "day" in ago:
-            # Extract number
             try:
                 days = int(ago.split()[0])
                 if days <= 3:
@@ -73,7 +86,6 @@ class ProjectInfo:
 @dataclass
 class ProjectsState:
     projects: list[ProjectInfo] = field(default_factory=list)
-    projects_dir: str = ""
 
     @property
     def total(self) -> int:
@@ -91,24 +103,10 @@ class ProjectsState:
     def dirty_count(self) -> int:
         return sum(1 for p in self.projects if p.dirty_files > 0)
 
-    def by_activity(self) -> dict[str, list[ProjectInfo]]:
-        groups: dict[str, list[ProjectInfo]] = {}
-        for p in self.projects:
-            level = p.activity_level if p.is_git else "no git"
-            groups.setdefault(level, []).append(p)
-        return groups
 
-    def sorted_by_recent(self) -> list[ProjectInfo]:
-        """Sort projects by activity: active first, then recent, then stale."""
-        order = {"active": 0, "recent": 1, "stale": 2, "unknown": 3, "no git": 4}
-        return sorted(self.projects, key=lambda p: (
-            order.get(p.activity_level if p.is_git else "no git", 5),
-            -(p.last_commit_ts or 0),
-        ))
-
+# ── Git helpers ─────────────────────────────────────────────────────────────
 
 def _run_git(repo_path: str, args: list[str]) -> str:
-    """Run a git command in a repo, return stdout or empty string."""
     try:
         result = subprocess.run(
             ["git", "-C", repo_path] + args,
@@ -120,7 +118,6 @@ def _run_git(repo_path: str, args: list[str]) -> str:
 
 
 def _detect_languages(path: Path) -> list[str]:
-    """Quick heuristic language detection from file extensions."""
     langs = set()
     ext_map = {
         ".py": "Python", ".js": "JavaScript", ".ts": "TypeScript",
@@ -129,7 +126,6 @@ def _detect_languages(path: Path) -> list[str]:
         ".rb": "Ruby", ".sh": "Shell", ".html": "HTML", ".css": "CSS",
         ".vue": "Vue", ".svelte": "Svelte",
     }
-
     try:
         for item in path.iterdir():
             if item.is_file():
@@ -137,79 +133,115 @@ def _detect_languages(path: Path) -> list[str]:
                 if ext in ext_map:
                     langs.add(ext_map[ext])
             elif item.is_dir() and item.name == "src":
-                # Check src/ one level deep
                 for sub in item.iterdir():
                     if sub.is_file():
                         ext = sub.suffix.lower()
                         if ext in ext_map:
                             langs.add(ext_map[ext])
-    except PermissionError:
+    except (PermissionError, OSError):
+        pass
+    return sorted(langs)[:5]
+
+
+def _enrich_with_git(proj: ProjectInfo) -> None:
+    """Populate git/file metadata on a ProjectInfo that has a path."""
+    item = Path(proj.path)
+    if not item.exists():
+        return
+
+    proj.is_git = (item / ".git").is_dir()
+    proj.has_readme = (item / "README.md").exists() or (item / "readme.md").exists()
+    proj.has_package_json = (item / "package.json").exists()
+    proj.has_requirements = (item / "requirements.txt").exists()
+    proj.has_pyproject = (item / "pyproject.toml").exists()
+    proj.languages = _detect_languages(item)
+
+    try:
+        proj.last_modified = datetime.fromtimestamp(item.stat().st_mtime)
+    except OSError:
         pass
 
-    return sorted(langs)[:5]  # Cap at 5
+    if proj.is_git:
+        proj.branch = _run_git(str(item), ["branch", "--show-current"]) or "HEAD"
 
-
-def collect_projects(projects_dir: str | None = None) -> ProjectsState:
-    """Collect project data from the projects directory."""
-    if projects_dir is None:
-        projects_dir = default_projects_dir(projects_dir)
-
-    projects_path = Path(projects_dir)
-    if not projects_path.exists():
-        return ProjectsState(projects_dir=projects_dir)
-
-    projects: list[ProjectInfo] = []
-
-    for item in sorted(projects_path.iterdir()):
-        if not item.is_dir():
-            continue
-        if item.name.startswith("."):
-            continue
-
-        is_git = (item / ".git").is_dir()
-        proj = ProjectInfo(
-            name=item.name,
-            path=str(item),
-            is_git=is_git,
-            has_readme=(item / "README.md").exists() or (item / "readme.md").exists(),
-            has_package_json=(item / "package.json").exists(),
-            has_requirements=(item / "requirements.txt").exists(),
-            has_pyproject=(item / "pyproject.toml").exists(),
-            languages=_detect_languages(item),
-        )
-
-        # Get directory mtime
-        try:
-            proj.last_modified = datetime.fromtimestamp(item.stat().st_mtime)
-        except OSError:
-            pass
-
-        if is_git:
-            # Branch
-            proj.branch = _run_git(str(item), ["branch", "--show-current"]) or "HEAD"
-
-            # Last commit
-            log_output = _run_git(str(item), ["log", "-1", "--format=%ar|%s|%ct"])
-            if log_output and "|" in log_output:
-                parts = log_output.split("|", 2)
-                proj.last_commit_ago = parts[0]
-                proj.last_commit_msg = parts[1] if len(parts) > 1 else None
-                try:
-                    proj.last_commit_ts = float(parts[2]) if len(parts) > 2 else None
-                except ValueError:
-                    pass
-
-            # Dirty files
-            status = _run_git(str(item), ["status", "--porcelain"])
-            proj.dirty_files = len([l for l in status.split("\n") if l.strip()]) if status else 0
-
-            # Total commits
-            count = _run_git(str(item), ["rev-list", "--count", "HEAD"])
+        log_output = _run_git(str(item), ["log", "-1", "--format=%ar|%s|%ct"])
+        if log_output and "|" in log_output:
+            parts = log_output.split("|", 2)
+            proj.last_commit_ago = parts[0]
+            proj.last_commit_msg = parts[1] if len(parts) > 1 else None
             try:
-                proj.total_commits = int(count)
+                proj.last_commit_ts = float(parts[2]) if len(parts) > 2 else None
             except ValueError:
                 pass
 
-        projects.append(proj)
+        status = _run_git(str(item), ["status", "--porcelain"])
+        proj.dirty_files = len([l for l in status.split("\n") if l.strip()]) if status else 0
 
-    return ProjectsState(projects=projects, projects_dir=projects_dir)
+        count = _run_git(str(item), ["rev-list", "--count", "HEAD"])
+        try:
+            proj.total_commits = int(count)
+        except ValueError:
+            pass
+
+
+# ── DB read ─────────────────────────────────────────────────────────────────
+
+def _read_projects_from_db(db_path: str) -> list[ProjectInfo]:
+    """Read projects from state.db and enrich with git info."""
+    projects: list[ProjectInfo] = []
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Check if projects table exists (schema v7+)
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'"
+        )
+        if not cursor.fetchone():
+            conn.close()
+            return projects
+
+        cursor.execute("SELECT * FROM projects ORDER BY updated_at DESC")
+        rows = cursor.fetchall()
+
+        for row in rows:
+            proj = ProjectInfo(
+                name=row["name"],
+                path=row["path"],
+                description=row["description"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+            )
+
+            # Session count
+            cursor.execute(
+                "SELECT COUNT(*) FROM sessions WHERE project_id = ?",
+                (proj.name,),
+            )
+            proj.session_count = cursor.fetchone()[0]
+
+            # Enrich with git/file info if path exists
+            if proj.path:
+                _enrich_with_git(proj)
+
+            projects.append(proj)
+
+        conn.close()
+    except Exception:
+        logger.warning("Error reading projects from state.db", exc_info=True)
+
+    return projects
+
+
+def collect_projects() -> ProjectsState:
+    """Collect project data from state.db (cached, invalidates on db change)."""
+    hermes_dir = default_hermes_dir()
+    db_path = Path(hermes_dir) / "state.db"
+    if not db_path.exists():
+        return ProjectsState()
+
+    def _compute():
+        return ProjectsState(projects=_read_projects_from_db(str(db_path)))
+
+    return get_cached_or_compute("projects", _compute, str(db_path))

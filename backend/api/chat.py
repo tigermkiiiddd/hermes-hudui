@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -10,12 +9,10 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..chat import (
-    ChatEngine,
     ChatNotAvailableError,
-    ChatSession,
     chat_engine,
 )
-from ..collectors.sessions import collect_sessions
+from ..chat.models import ChatSession
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -47,51 +44,7 @@ class ComposerStateResponse(BaseModel):
     context_tokens: int
 
 
-@router.post("/sessions", response_model=SessionResponse)
-async def create_session(request: CreateSessionRequest) -> SessionResponse:
-    """Create a new chat session."""
-    try:
-        session = chat_engine.create_session(
-            profile=request.profile, model=request.model
-        )
-        return SessionResponse(
-            id=session.id,
-            profile=session.profile,
-            model=session.model,
-            title=session.title,
-            backend_type=session.backend_type,
-            is_active=session.is_active,
-            message_count=session.message_count,
-        )
-    except ChatNotAvailableError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-
-
-@router.get("/sessions", response_model=list[SessionResponse])
-async def list_sessions() -> list[SessionResponse]:
-    """List all active chat sessions."""
-    sessions = chat_engine.list_sessions()
-    return [
-        SessionResponse(
-            id=s.id,
-            profile=s.profile,
-            model=s.model,
-            title=s.title,
-            backend_type=s.backend_type,
-            is_active=s.is_active,
-            message_count=s.message_count,
-        )
-        for s in sessions
-    ]
-
-
-@router.get("/sessions/{session_id}", response_model=SessionResponse)
-async def get_session(session_id: str) -> SessionResponse:
-    """Get a specific session."""
-    session = chat_engine.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
+def _session_to_response(session: ChatSession) -> SessionResponse:
     return SessionResponse(
         id=session.id,
         profile=session.profile,
@@ -101,6 +54,33 @@ async def get_session(session_id: str) -> SessionResponse:
         is_active=session.is_active,
         message_count=session.message_count,
     )
+
+
+@router.post("/sessions", response_model=SessionResponse)
+async def create_session(request: CreateSessionRequest) -> SessionResponse:
+    """Create a new chat session."""
+    try:
+        session = chat_engine.create_session(
+            profile=request.profile, model=request.model
+        )
+        return _session_to_response(session)
+    except ChatNotAvailableError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+
+@router.get("/sessions", response_model=list[SessionResponse])
+async def list_sessions() -> list[SessionResponse]:
+    """List all active chat sessions."""
+    return [_session_to_response(s) for s in chat_engine.list_sessions()]
+
+
+@router.get("/sessions/{session_id}", response_model=SessionResponse)
+async def get_session(session_id: str) -> SessionResponse:
+    """Get a specific session."""
+    session = chat_engine.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return _session_to_response(session)
 
 
 @router.delete("/sessions/{session_id}")
@@ -113,7 +93,7 @@ async def end_session(session_id: str) -> dict[str, str]:
 
 @router.post("/sessions/{session_id}/send")
 async def send_message(session_id: str, request: SendMessageRequest) -> dict[str, str]:
-    """Send a message to a session."""
+    """Send a message to a session (starts gateway SSE stream in background)."""
     session = chat_engine.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -139,7 +119,7 @@ async def send_message(session_id: str, request: SendMessageRequest) -> dict[str
 
 @router.get("/sessions/{session_id}/stream")
 async def stream_response(session_id: str) -> StreamingResponse:
-    """Stream chat response via SSE."""
+    """Stream chat response via SSE (reads from ChatStreamer queue)."""
     session = chat_engine.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -147,39 +127,31 @@ async def stream_response(session_id: str) -> StreamingResponse:
     if not session.is_active:
         raise HTTPException(status_code=409, detail="Session is inactive")
 
-    try:
-        # This is called when user sends a message via POST first
-        # The streamer was created during that call
-        streamer = chat_engine._streamers.get(session_id)
+    streamer = chat_engine._streamers.get(session_id)
 
-        if not streamer:
-            # No active stream, return error
-            raise HTTPException(
-                status_code=400, detail="No active message stream. Send message first."
-            )
-
-        def event_generator():
-            """Generate SSE events."""
-            for event in streamer.iter_events():
-                yield streamer.to_sse(event)
-
-        return StreamingResponse(
-            event_generator(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",  # Disable nginx buffering
-            },
+    if not streamer:
+        raise HTTPException(
+            status_code=400, detail="No active message stream. Send message first."
         )
 
-    except ChatNotAvailableError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    def event_generator():
+        for event in streamer.iter_events():
+            yield streamer.to_sse(event)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/sessions/{session_id}/cancel")
 async def cancel_stream(session_id: str) -> dict[str, str]:
-    """Cancel an active streaming response by killing the subprocess."""
+    """Cancel an active streaming response."""
     session = chat_engine.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -190,20 +162,12 @@ async def cancel_stream(session_id: str) -> dict[str, str]:
 
 @router.get("/sessions/{session_id}/history")
 async def get_history(session_id: str, limit: int = 50) -> list[dict[str, Any]]:
-    """Get message history for a session from state.db."""
-    # This reads from the existing sessions collector
-    # We just need to filter by session_id
-    sessions_state = collect_sessions()
-
-    # Find session in database
-    for session in sessions_state.recent_sessions:
-        if session.session_id == session_id:
-            # Get detailed messages from state.db
-            # This would need a new collector to read messages table
-            # For now, return placeholder
-            return []
-
-    return []
+    """Get message history for a session (from in-memory conversation history)."""
+    history = chat_engine._conversation_history.get(session_id, [])
+    return [
+        {"role": msg.get("role"), "content": msg.get("content")}
+        for msg in history[-limit:]
+    ]
 
 
 @router.get("/sessions/{session_id}/composer", response_model=ComposerStateResponse)
@@ -216,8 +180,7 @@ async def get_composer_state(session_id: str) -> ComposerStateResponse:
             is_streaming=state.is_streaming,
             context_tokens=state.context_tokens,
         )
-    except Exception as e:
-        # Return default if session not found
+    except Exception:
         return ComposerStateResponse(
             model="unknown",
             is_streaming=False,
@@ -227,27 +190,118 @@ async def get_composer_state(session_id: str) -> ComposerStateResponse:
 
 @router.get("/available")
 async def check_availability() -> dict[str, Any]:
-    """Check if chat functionality is available."""
-    from ..chat import TmuxChatFallback
-
-    cli_available = chat_engine.is_available()
-
-    direct_import = False
-    try:
-        from run_agent import AIAgent
-
-        direct_import = True
-    except ImportError:
-        pass
-
-    tmux_available = TmuxChatFallback.is_available()
-    tmux_pane = TmuxChatFallback.find_hermes_pane() if tmux_available else None
-
+    """Check if chat functionality is available (gateway API server)."""
+    gateway_available = chat_engine.is_available()
     return {
-        "available": cli_available or direct_import or (tmux_available and tmux_pane is not None),
-        "cli_available": cli_available,
-        "direct_import": direct_import,
-        "tmux_available": tmux_available,
-        "tmux_pane_found": tmux_pane is not None,
-        "tmux_pane_id": tmux_pane,
+        "available": gateway_available,
+        "gateway_available": gateway_available,
+        "gateway_url": chat_engine._gateway_url,
+        "active_instance": chat_engine.active_instance,
     }
+
+
+@router.get("/gateways")
+async def list_gateways() -> dict[str, Any]:
+    """List all gateway instances with their availability status."""
+    return {
+        "gateways": chat_engine.get_gateway_info(),
+        "active": chat_engine.active_instance,
+    }
+
+
+class SwitchGatewayRequest(BaseModel):
+    instance: str
+
+
+@router.post("/gateways/switch")
+async def switch_gateway(request: SwitchGatewayRequest) -> dict[str, Any]:
+    """Switch active gateway instance."""
+    if chat_engine.switch_instance(request.instance):
+        return {
+            "status": "switched",
+            "active_instance": chat_engine.active_instance,
+            "gateway_url": chat_engine._gateway_url,
+            "available": chat_engine.is_available(),
+        }
+    raise HTTPException(
+        status_code=400,
+        detail=f"Unknown instance: {request.instance}. Available: {list(chat_engine.get_gateway_info().keys())}",
+    )
+
+
+# ── Direct Gateway Proxy ──────────────────────────────────────────────────
+
+import json
+import httpx
+
+
+class CompletionsRequest(BaseModel):
+    """OpenAI-compatible chat completion request proxied to gateway."""
+    session_id: str | None = None
+    messages: list[dict[str, Any]] | None = None
+    model: str | None = None
+    stream: bool = True
+
+
+@router.post("/completions")
+async def completions(request: CompletionsRequest) -> StreamingResponse:
+    """Proxy chat completions directly to the active gateway, streaming SSE back."""
+    gateway_url = chat_engine._gateway_url
+    if not gateway_url:
+        raise HTTPException(status_code=503, detail="No active gateway")
+
+    # Build payload for gateway
+    payload: dict[str, Any] = {
+        "model": request.model or "hermes-agent",
+        "messages": request.messages or [],
+        "stream": True,
+    }
+
+    # If session_id given, try to resume that gateway session
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if request.session_id:
+        gw_sid = chat_engine._gateway_session_ids.get(request.session_id)
+        if gw_sid:
+            headers["X-Hermes-Session-Id"] = gw_sid
+
+    def event_generator():
+        try:
+            with httpx.stream(
+                "POST",
+                f"{gateway_url}/v1/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=httpx.Timeout(600.0, connect=10.0),
+            ) as resp:
+                if resp.status_code != 200:
+                    body = ""
+                    for chunk in resp.iter_text():
+                        body += chunk
+                    yield f"data: {json.dumps({'error': {'message': f'Gateway {resp.status_code}: {body[:300]}'}})}\n\n"
+                    return
+
+                # Capture gateway session ID
+                gw_sid = resp.headers.get("x-hermes-session-id")
+                if gw_sid and request.session_id:
+                    chat_engine._gateway_session_ids[request.session_id] = gw_sid
+
+                for line in resp.iter_lines():
+                    if not line:
+                        yield "\n"
+                        continue
+                    yield f"{line}\n"
+
+        except httpx.ConnectError:
+            yield f"data: {json.dumps({'error': {'message': 'Cannot connect to gateway'}})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': {'message': str(e)}})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

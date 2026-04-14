@@ -52,9 +52,9 @@ export default function TopBar({ activeTab, onTabChange }: TopBarProps) {
           return
         }
       }
-      // 0 for Profiles (10th tab with key '0')
+      // 0 for Costs (10th tab with key '0')
       if (e.key === '0') {
-        onTabChange('profiles')
+        onTabChange('costs')
         return
       }
       // T to toggle theme picker
