@@ -17,6 +17,7 @@ import TokenCostsPanel from './components/TokenCostsPanel'
 import CorrectionsPanel from './components/CorrectionsPanel'
 import PatternsPanel from './components/PatternsPanel'
 import { useI18n } from './i18n'
+import SettingsPanel from './components/SettingsPanel'
 
 function TabContent({ tab }: { tab: TabId }) {
   switch (tab) {
@@ -32,6 +33,7 @@ function TabContent({ tab }: { tab: TabId }) {
     case 'costs': return <TokenCostsPanel />
     case 'corrections': return <CorrectionsPanel />
     case 'patterns': return <PatternsPanel />
+    case 'settings': return <SettingsPanel />
     default: return <DashboardPanel />
   }
 }
@@ -50,11 +52,19 @@ const GRID_CLASS: Record<TabId, string> = {
   costs: 'grid-cols-1 lg:grid-cols-2',
   corrections: 'grid-cols-1',
   patterns: 'grid-cols-1 lg:grid-cols-2',
+  settings: 'grid-cols-1',
 }
 
 export default function App() {
   const { t } = useI18n()
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard')
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    return (localStorage.getItem('hud-active-tab') as TabId) || 'dashboard'
+  })
+
+  const handleTabChange = (tab: TabId) => {
+    setActiveTab(tab)
+    localStorage.setItem('hud-active-tab', tab)
+  }
   const [booted, setBooted] = useState(() => {
     return sessionStorage.getItem('hud-booted') === 'true'
   })
@@ -73,18 +83,19 @@ export default function App() {
       id: tab.id,
       label: `${tab.labelKey}`,
       shortcut: tab.key as string,
-      action: () => setActiveTab(tab.id),
+      action: () => handleTabChange(tab.id),
     })),
     // Add Costs tab without shortcut
-    { id: 'token-costs', label: 'tab.token-costs', shortcut: '', action: () => setActiveTab('token-costs') },
+    { id: 'token-costs', label: 'tab.token-costs', shortcut: '', action: () => handleTabChange('token-costs') },
   ], [])
 
   const handleCommandSelect = useCallback((id: string) => {
-    setActiveTab(id as TabId)
+    handleTabChange(id as TabId)
   }, [])
 
   return (
     <ThemeProvider>
+      <I18nProvider>
       {!booted && <BootScreen onComplete={handleBootComplete} />}
 
       <CommandPalette
@@ -92,12 +103,12 @@ export default function App() {
         onSelect={handleCommandSelect}
       />
 
-      <TopBar activeTab={activeTab} onTabChange={setActiveTab} />
+      <TopBar activeTab={activeTab} onTabChange={handleTabChange} />
 
-      {/* Chat tab: fixed-height, no page scroll — message thread scrolls internally */}
-      {activeTab === 'chat' ? (
+      {/* Chat & Settings tabs: fixed-height, no page scroll — panels scroll internally */}
+      {(activeTab === 'chat' || activeTab === 'settings') ? (
         <div style={{ flex: '1 1 0', height: 0, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div className="p-2 h-full">
+          <div className={activeTab === 'chat' ? 'p-2 h-full' : 'p-2 h-full'}>
             <TabContent tab={activeTab} />
           </div>
         </div>
@@ -139,6 +150,7 @@ export default function App() {
           <span className="opacity-40">Ctrl+K</span> {t('status.commands')}
         </span>
       </div>
+      </I18nProvider>
     </ThemeProvider>
   )
 }

@@ -31,6 +31,7 @@ from .api import (
     token_costs,
     cache,
     chat,
+    settings,
 )
 from .file_watcher import start_watcher, stop_watcher
 from .websocket_manager import ws_manager
@@ -68,6 +69,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Disable caching for HTML so browsers always fetch the latest JS bundle
+from starlette.requests import Request
+from starlette.responses import Response
+
+@app.middleware("http")
+async def no_cache_html(request: Request, call_next):
+    response: Response = await call_next(request)
+    if request.url.path == "/" or request.url.path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -104,6 +118,7 @@ app.include_router(dashboard.router, prefix="/api")
 app.include_router(token_costs.router, prefix="/api")
 app.include_router(cache.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
+app.include_router(settings.router, prefix="/api")
 
 # Serve frontend static files (after API routes so /api takes priority)
 if STATIC_DIR.exists():

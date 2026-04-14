@@ -135,10 +135,12 @@ function SearchResults({ query, onSelect }: { query: string; onSelect: (id: stri
 
 export default function SessionsPanel() {
   const { t } = useTranslation()
-  const { data, isLoading } = useApi('/sessions', 30000)
+  const { data, isLoading, mutate } = useApi('/sessions', 30000)
   const [activeTranscript, setActiveTranscript] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [submittedQuery, setSubmittedQuery] = useState('')
+  const [editingTitle, setEditingTitle] = useState<string | null>(null)
+  const [editTitleValue, setEditTitleValue] = useState('')
 
   const handleSearch = useCallback((e: React.SyntheticEvent) => {
     e.preventDefault()
@@ -245,22 +247,74 @@ export default function SessionsPanel() {
         ) : (
           <div className="space-y-0.5 text-[13px]">
             {sessions.slice(0, 15).map((s: any) => (
-              <button
+              <div
                 key={s.id}
                 onClick={() => setActiveTranscript(s.id)}
-                className="w-full flex items-center gap-2 py-0.5 text-left cursor-pointer"
+                className="w-full flex items-center gap-2 py-0.5 text-left cursor-pointer group"
                 style={{ borderBottom: '1px solid var(--hud-border)', background: 'transparent' }}
                 onMouseEnter={hoverOn}
                 onMouseLeave={hoverOff}
                 title={t('sessions.clickToRead')}
               >
-                <span className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ background: sourceColor(s.source) }} />
-                <span className="flex-1 truncate">{s.title || s.id.slice(0, 8)}</span>
-                <span className="tabular-nums" style={{ color: 'var(--hud-text-dim)' }}>
-                  {s.message_count}m {s.tool_call_count}t
-                </span>
-              </button>
+                <button
+                  onClick={() => setActiveTranscript(s.id)}
+                  className="flex-1 flex items-center gap-2 text-left cursor-pointer"
+                  style={{ background: 'transparent' }}
+                  onMouseEnter={hoverOn}
+                  onMouseLeave={hoverOff}
+                  title="Click to read transcript"
+                >
+                  <span className="w-2 h-2 rounded-full flex-shrink-0"
+                    style={{ background: sourceColor(s.source) }} />
+                  {editingTitle === s.id ? (
+                    <input
+                      type="text"
+                      value={editTitleValue}
+                      onChange={e => setEditTitleValue(e.target.value)}
+                      onKeyDown={async e => {
+                        if (e.key === 'Enter') {
+                          await fetch(`/api/sessions/${s.id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ title: editTitleValue }),
+                          })
+                          setEditingTitle(null)
+                          mutate()
+                        }
+                        if (e.key === 'Escape') setEditingTitle(null)
+                      }}
+                      className="flex-1 px-1 text-[13px] outline-none"
+                      style={{ background: 'var(--hud-bg-deep)', border: '1px solid var(--hud-primary)', color: 'var(--hud-text)' }}
+                      autoFocus
+                      onClick={e => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span className="flex-1 truncate">{s.title || s.id.slice(0, 8)}</span>
+                  )}
+                  <span className="tabular-nums" style={{ color: 'var(--hud-text-dim)' }}>
+                    {s.message_count}m {s.tool_call_count}t
+                  </span>
+                </button>
+                {/* Action buttons — always visible */}
+                <div className="flex gap-0.5 shrink-0">
+                  <button
+                    onClick={() => { setEditingTitle(s.id); setEditTitleValue(s.title || '') }}
+                    className="px-1.5 py-0.5 text-[11px] cursor-pointer"
+                    style={{ background: 'transparent', color: 'var(--hud-text-dim)', border: 'none' }}
+                    title="Rename"
+                  >✎</button>
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Delete session "${s.title || s.id.slice(0, 8)}"?`)) return
+                      await fetch(`/api/sessions/${s.id}`, { method: 'DELETE' })
+                      mutate()
+                    }}
+                    className="px-1.5 py-0.5 text-[11px] cursor-pointer"
+                    style={{ background: 'transparent', color: '#e55', border: 'none' }}
+                    title="Delete"
+                  >✕</button>
+                </div>
+              </div>
             ))}
           </div>
         )}

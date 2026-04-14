@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections import Counter
@@ -11,6 +12,24 @@ from pathlib import Path
 from ..cache import get_cached_or_compute
 from .models import SkillInfo, SkillsState
 from .utils import default_hermes_dir
+
+
+def _load_disabled_skills(hermes_dir: Path) -> set[str]:
+    """Load set of disabled skill names from JSON file."""
+    path = hermes_dir / "disabled_skills.json"
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return set(data.get("disabled", []))
+        except Exception:
+            pass
+    return set()
+
+
+def _save_disabled_skills(hermes_dir: Path, disabled: set[str]) -> None:
+    """Save disabled skill names to JSON file."""
+    path = hermes_dir / "disabled_skills.json"
+    path.write_text(json.dumps({"disabled": sorted(disabled)}, indent=2), encoding="utf-8")
 
 
 def _parse_skill_md(path: Path) -> dict:
@@ -57,10 +76,11 @@ def _detect_custom(skill: SkillInfo, bulk_timestamps: set[int]) -> bool:
     return skill_minute not in bulk_timestamps
 
 
-def _do_collect_skills(skills_dir: Path) -> SkillsState:
+def _do_collect_skills(skills_dir: Path, hermes_dir: Path) -> SkillsState:
     """Actually scan skills directory (internal, uncached)."""
     skills: list[SkillInfo] = []
     mtimes: list[int] = []
+    disabled_names = _load_disabled_skills(hermes_dir)
 
     for skill_md in skills_dir.rglob("SKILL.md"):
         stat = skill_md.stat()
@@ -80,15 +100,17 @@ def _do_collect_skills(skills_dir: Path) -> SkillsState:
             continue
 
         meta = _parse_skill_md(skill_md)
+        skill_name = meta.get("name", name)
 
         skills.append(
             SkillInfo(
-                name=meta.get("name", name),
+                name=skill_name,
                 category=category,
                 description=meta.get("description", ""),
                 path=str(skill_md),
                 modified_at=mtime,
                 file_size=stat.st_size,
+                enabled=skill_name not in disabled_names,
             )
         )
         mtimes.append(mtime_minute)
@@ -110,13 +132,15 @@ def collect_skills(hermes_dir: str | None = None) -> SkillsState:
     if hermes_dir is None:
         hermes_dir = default_hermes_dir(hermes_dir)
 
-    skills_dir = Path(hermes_dir) / "skills"
+    hdir = Path(hermes_dir)
+    skills_dir = hdir / "skills"
     if not skills_dir.exists():
         return SkillsState()
 
     return get_cached_or_compute(
         cache_key=f"skills:{hermes_dir}",
-        compute_fn=lambda: _do_collect_skills(skills_dir),
+        compute_fn=lambda: _do_collect_skills(skills_dir, hdir),
+        file_paths=[hdir / "disabled_skills.json"],
         dir_paths=[skills_dir],
         ttl=60,  # 60 second cache even if unchanged
     )

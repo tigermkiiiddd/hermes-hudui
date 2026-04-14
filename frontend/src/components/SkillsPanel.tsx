@@ -1,47 +1,113 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useApi } from '../hooks/useApi'
 import Panel from './Panel'
 import { timeAgo, formatSize } from '../lib/utils'
 import { useTranslation } from '../i18n'
 
+const API_BASE = ''  // same origin
+
 function SkillItem({ skill, variant }: { skill: any; variant: 'category' | 'recent' }) {
   const { t } = useTranslation()
   const descLimit = variant === 'category' ? 120 : 100
   return (
-    <div className="py-2 px-2 text-[13px]" style={{ borderLeft: '2px solid var(--hud-border)' }}>
-      <div className="flex items-center gap-2 mb-0.5">
-        <span className="font-bold" style={{ color: 'var(--hud-primary)' }}>{skill.name}</span>
-        {variant === 'recent' && (
-          <span className="text-[13px] px-1" style={{ background: 'var(--hud-bg-panel)', color: 'var(--hud-text-dim)' }}>
-            {skill.category}
+    <button
+      onClick={onChange}
+      className="relative inline-flex h-[18px] w-[32px] shrink-0 cursor-pointer items-center rounded-full transition-colors"
+      style={{ background: checked ? 'var(--hud-primary)' : 'var(--hud-bg-panel)' }}
+    >
+      <span
+        className="inline-block h-[14px] w-[14px] rounded-full transition-transform"
+        style={{
+          background: 'var(--hud-bg-deep)',
+          transform: checked ? 'translateX(16px)' : 'translateX(2px)',
+        }}
+      />
+    </button>
+  )
+}
+
+function SkillItem({ skill, variant, onToggle }: { skill: any; variant: 'category' | 'recent'; onToggle: (name: string, enabled: boolean) => void }) {
+  const descLimit = variant === 'category' ? 120 : 100
+  const [enabled, setEnabled] = useState(skill.enabled !== false)
+  const [loading, setLoading] = useState(false)
+
+  const handleToggle = useCallback(async () => {
+    if (loading) return
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/skills/${encodeURIComponent(skill.name)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !enabled }),
+      })
+      if (res.ok) {
+        setEnabled(!enabled)
+        onToggle(skill.name, !enabled)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [enabled, loading, skill.name, onToggle])
+
+  return (
+    <div
+      className="py-2 px-2 text-[13px] flex items-start gap-2"
+      style={{
+        borderLeft: '2px solid var(--hud-border)',
+        opacity: enabled ? 1 : 0.5,
+      }}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="font-bold" style={{ color: enabled ? 'var(--hud-primary)' : 'var(--hud-text-dim)' }}>
+            {skill.name}
           </span>
-        )}
-        {skill.is_custom && (
-          <span className="text-[13px] px-1" style={{ background: 'var(--hud-accent)', color: 'var(--hud-bg-deep)' }}>{t('dashboard.custom')}</span>
-        )}
-        {variant === 'category' && (
-          <span className="text-[13px] ml-auto" style={{ color: 'var(--hud-text-dim)' }}>
-            {formatSize(skill.file_size)}
-          </span>
-        )}
+          {variant === 'recent' && (
+            <span className="text-[13px] px-1" style={{ background: 'var(--hud-bg-panel)', color: 'var(--hud-text-dim)' }}>
+              {skill.category}
+            </span>
+          )}
+          {skill.is_custom && (
+            <span className="text-[13px] px-1" style={{ background: 'var(--hud-accent)', color: 'var(--hud-bg-deep)' }}>{t('dashboard.custom')}</span>
+          )}
+          {variant === 'category' && (
+            <span className="text-[13px] ml-auto" style={{ color: 'var(--hud-text-dim)' }}>
+              {formatSize(skill.file_size)}
+            </span>
+          )}
+        </div>
+        <div style={{ color: 'var(--hud-text-dim)' }}>
+          {skill.description?.slice(0, descLimit)}{skill.description?.length > descLimit ? '...' : ''}
+        </div>
+        <div className="text-[13px] mt-0.5" style={{ color: 'var(--hud-text-dim)' }}>
+          {variant === 'category'
+            ? `${skill.modified_at ? new Date(skill.modified_at).toLocaleDateString() : ''} · ${skill.path?.split('/').slice(-3).join('/')}`
+            : skill.modified_at ? timeAgo(skill.modified_at) : ''
+          }
+        </div>
       </div>
-      <div style={{ color: 'var(--hud-text-dim)' }}>
-        {skill.description?.slice(0, descLimit)}{skill.description?.length > descLimit ? '...' : ''}
-      </div>
-      <div className="text-[13px] mt-0.5" style={{ color: 'var(--hud-text-dim)' }}>
-        {variant === 'category'
-          ? `${skill.modified_at ? new Date(skill.modified_at).toLocaleDateString() : ''} · ${skill.path?.split('/').slice(-3).join('/')}`
-          : skill.modified_at ? timeAgo(skill.modified_at) : ''
-        }
-      </div>
+      <Switch checked={enabled} onChange={handleToggle} />
     </div>
   )
 }
 
 export default function SkillsPanel() {
   const { t } = useTranslation()
-  const { data, isLoading } = useApi('/skills', 60000)
+  const { data, isLoading, mutate } = useApi('/skills', 60000)
   const [selectedCat, setSelectedCat] = useState<string | null>(null)
+
+  const handleToggle = useCallback((name: string, enabled: boolean) => {
+    // Update local SWR cache to reflect change immediately
+    if (data) {
+      const updated = { ...data }
+      if (updated.skills) {
+        updated.skills = updated.skills.map((s: any) =>
+          s.name === name ? { ...s, enabled } : s
+        )
+      }
+      mutate(updated, false)
+    }
+  }, [data, mutate])
 
   // Only show loading on initial load
   if (isLoading && !data) {
@@ -59,6 +125,10 @@ export default function SkillsPanel() {
   // Skills in selected category
   const catSkills = selectedCat ? byCategory[selectedCat] || [] : []
 
+  // Count disabled
+  const allSkills: any[] = data.skills || []
+  const disabledCount = allSkills.filter((s: any) => s.enabled === false).length
+
   return (
     <>
       {/* Category overview */}
@@ -70,6 +140,11 @@ export default function SkillsPanel() {
           <span className="text-[13px] px-2 py-0.5" style={{ background: 'var(--hud-bg-panel)', color: 'var(--hud-accent)' }}>
             {data.custom_count} {t('dashboard.custom')}
           </span>
+          {disabledCount > 0 && (
+            <span className="text-[13px] px-2 py-0.5" style={{ background: 'var(--hud-bg-panel)', color: 'var(--hud-text-dim)' }}>
+              {disabledCount} off
+            </span>
+          )}
           <span className="text-[13px]" style={{ color: 'var(--hud-text-dim)' }}>
             {sorted.length} {t('dashboard.categories')}
           </span>
@@ -116,7 +191,7 @@ export default function SkillsPanel() {
         <Panel title={selectedCat}>
           <div className="space-y-2">
             {catSkills.map((skill: any) => (
-              <SkillItem key={skill.name} skill={skill} variant="category" />
+              <SkillItem key={skill.name} skill={skill} variant="category" onToggle={handleToggle} />
             ))}
             {catSkills.length === 0 && (
               <div className="text-[13px]" style={{ color: 'var(--hud-text-dim)' }}>{t('dashboard.noSkillsInCategory')}</div>
@@ -127,7 +202,7 @@ export default function SkillsPanel() {
         <Panel title={t('dashboard.recentlyModified')}>
           <div className="space-y-2">
             {recentlyMod.map((skill: any) => (
-              <SkillItem key={skill.name} skill={skill} variant="recent" />
+              <SkillItem key={skill.name} skill={skill} variant="recent" onToggle={handleToggle} />
             ))}
             {recentlyMod.length === 0 && (
               <div className="text-[13px]" style={{ color: 'var(--hud-text-dim)' }}>{t('dashboard.noRecentModifications')}</div>

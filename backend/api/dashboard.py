@@ -76,7 +76,6 @@ async def get_dashboard():
         "git_repos": projects_data.git_repos,
         "active_count": projects_data.active_count,
         "dirty_count": projects_data.dirty_count,
-        "projects_dir": projects_data.projects_dir,
     }
 
     return {
