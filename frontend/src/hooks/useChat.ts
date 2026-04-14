@@ -167,7 +167,7 @@ export function useHermesSessions() {
 // ── Chat hook (direct gateway SSE) ────────────────────────────────────────
 
 export function useChat(sessionId: string | null) {
-  const { lang } = useI18n()
+  useI18n()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [composerState, setComposerState] = useState<ComposerState>({

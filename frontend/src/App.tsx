@@ -16,7 +16,7 @@ import ProfilesPanel from './components/ProfilesPanel'
 import TokenCostsPanel from './components/TokenCostsPanel'
 import CorrectionsPanel from './components/CorrectionsPanel'
 import PatternsPanel from './components/PatternsPanel'
-import { useI18n } from './i18n'
+import { useI18n, I18nProvider } from './i18n'
 import SettingsPanel from './components/SettingsPanel'
 
 function TabContent({ tab }: { tab: TabId }) {
@@ -30,7 +30,7 @@ function TabContent({ tab }: { tab: TabId }) {
     case 'agents': return <AgentsPanel />
     case 'chat': return <ChatPanel />
     case 'profiles': return <ProfilesPanel />
-    case 'costs': return <TokenCostsPanel />
+    case 'token-costs': return <TokenCostsPanel />
     case 'corrections': return <CorrectionsPanel />
     case 'patterns': return <PatternsPanel />
     case 'settings': return <SettingsPanel />
@@ -43,13 +43,14 @@ const GRID_CLASS: Record<TabId, string> = {
   dashboard: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
   memory: 'grid-cols-1 sm:grid-cols-2',
   skills: 'grid-cols-1 lg:grid-cols-[2fr_1fr]',
+  sessions: 'grid-cols-1 sm:grid-cols-2',
   cron: 'grid-cols-1',
   projects: 'grid-cols-1',
   health: 'grid-cols-1 sm:grid-cols-2',
   agents: 'grid-cols-1 lg:grid-cols-2',
   chat: 'grid-cols-1',
   profiles: 'grid-cols-1',
-  costs: 'grid-cols-1 lg:grid-cols-2',
+  'token-costs': 'grid-cols-1 lg:grid-cols-2',
   corrections: 'grid-cols-1',
   patterns: 'grid-cols-1 lg:grid-cols-2',
   settings: 'grid-cols-1',

@@ -6,9 +6,7 @@ import { useTranslation } from '../i18n'
 
 const API_BASE = ''  // same origin
 
-function SkillItem({ skill, variant }: { skill: any; variant: 'category' | 'recent' }) {
-  const { t } = useTranslation()
-  const descLimit = variant === 'category' ? 120 : 100
+function Switch({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
     <button
       onClick={onChange}
@@ -27,6 +25,7 @@ function SkillItem({ skill, variant }: { skill: any; variant: 'category' | 'rece
 }
 
 function SkillItem({ skill, variant, onToggle }: { skill: any; variant: 'category' | 'recent'; onToggle: (name: string, enabled: boolean) => void }) {
+  const { t } = useTranslation()
   const descLimit = variant === 'category' ? 120 : 100
   const [enabled, setEnabled] = useState(skill.enabled !== false)
   const [loading, setLoading] = useState(false)

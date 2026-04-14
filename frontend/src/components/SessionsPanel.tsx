@@ -8,8 +8,8 @@ function sourceColor(source: string) {
   return source === 'telegram' ? 'var(--hud-accent)' : 'var(--hud-primary)'
 }
 
-const hoverOn = (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'var(--hud-bg-hover)' }
-const hoverOff = (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'transparent' }
+const hoverOn = (e: React.MouseEvent<HTMLElement>) => { e.currentTarget.style.background = 'var(--hud-bg-hover)' }
+const hoverOff = (e: React.MouseEvent<HTMLElement>) => { e.currentTarget.style.background = 'transparent' }
 
 // ── Transcript viewer ──────────────────────────────────────────────────────────
 

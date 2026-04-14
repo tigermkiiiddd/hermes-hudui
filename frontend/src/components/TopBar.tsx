@@ -8,6 +8,9 @@ export const TABS = [
   { id: 'skills', labelKey: 'tab.skills', key: '3' },
   { id: 'sessions', labelKey: 'tab.sessions', key: '4' },
   { id: 'cron', labelKey: 'tab.cron', key: '5' },
+  { id: 'projects', labelKey: 'tab.projects', key: '6' },
+  { id: 'health', labelKey: 'tab.health', key: '7' },
+  { id: 'agents', labelKey: 'tab.agents', key: '8' },
   { id: 'chat', labelKey: 'tab.chat', key: '9' },
   { id: 'profiles', labelKey: 'tab.profiles', key: '0' },
   { id: 'token-costs', labelKey: 'tab.token-costs', key: null },
@@ -63,7 +66,7 @@ export default function TopBar({ activeTab, onTabChange }: TopBarProps) {
         const tab = TABS.find(t => t.key === String(num))
         if (tab) { onTabChange(tab.id); return }
       }
-      if (e.key === '0') { onTabChange('costs'); return }
+      if (e.key === '0') { onTabChange('token-costs'); return }
       if (e.key === 's') { onTabChange('settings'); return }
       if (e.key === 't') setShowThemePicker(p => !p)
     }
