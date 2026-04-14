@@ -16,6 +16,7 @@ export const translations = {
     'tab.token-costs': 'Costs',
     'tab.corrections': 'Corrections',
     'tab.patterns': 'Patterns',
+    'tab.settings': 'Settings',
 
     // Dashboard
     'dashboard.title': 'Dashboard',
@@ -345,6 +346,7 @@ export const translations = {
     'tab.token-costs': '成本',
     'tab.corrections': '纠正',
     'tab.patterns': '模式',
+    'tab.settings': '设置',
 
     // Dashboard
     'dashboard.title': '仪表盘',
