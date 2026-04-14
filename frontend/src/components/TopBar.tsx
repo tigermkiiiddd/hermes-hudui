@@ -94,16 +94,6 @@ export default function TopBar({ activeTab, onTabChange }: TopBarProps) {
         ))}
       </div>
 
-      {/* Language switcher */}
-      <button
-        onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
-        className="px-2 py-1.5 text-[13px] tracking-wider uppercase cursor-pointer shrink-0"
-        style={{ color: 'var(--hud-text-dim)', minHeight: '32px' }}
-        title={lang === 'en' ? 'Switch to Chinese' : '切换到英文'}
-      >
-        {lang === 'en' ? '中' : 'EN'}
-      </button>
-
       {/* Theme picker */}
       <div className="relative shrink-0">
         <button
@@ -147,6 +137,20 @@ export default function TopBar({ activeTab, onTabChange }: TopBarProps) {
       <span className="text-[13px] ml-2 tabular-nums shrink-0 hidden sm:inline" style={{ color: 'var(--hud-text-dim)' }}>
         {time.toLocaleTimeString('en-US', { hour12: false })}
       </span>
+
+      <button
+        onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
+        className="ml-2 px-2 py-0.5 text-[12px] font-bold tracking-wider cursor-pointer shrink-0"
+        style={{
+          color: 'var(--hud-primary)',
+          border: '1px solid var(--hud-primary)',
+          background: 'transparent',
+          minHeight: '24px',
+        }}
+        title={lang === 'en' ? 'Switch to Chinese' : '切换到英文'}
+      >
+        {lang === 'en' ? '中文' : 'EN'}
+      </button>
     </div>
   )
 }
