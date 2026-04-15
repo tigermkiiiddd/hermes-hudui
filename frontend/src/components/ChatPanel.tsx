@@ -1,7 +1,8 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import Panel, { Sparkline } from './Panel'
 import { useApi } from '../hooks/useApi'
-import { useChat, useChatAvailability, useHermesSessions, useGateways } from '../hooks/useChat'
+import { useChat, useChatAvailability, useGateways } from '../hooks/useChat'
+import type { HermesSession } from '../hooks/useChat'
 import MessageThread from './chat/MessageThread'
 import MessageBubble from './chat/MessageBubble'
 import Composer from './chat/Composer'
@@ -151,9 +152,29 @@ export default function ChatPanel() {
   const [activeTranscript, setActiveTranscript] = useState<string | null>(null)
 
   useChatAvailability()
-  const { sessions, loading: loadingSessions, refresh: refreshSessions } = useHermesSessions()
   const { gateways, active: activeGateway, switchGateway } = useGateways()
-  const { data: sessionStats } = useApi('/sessions', 30000)
+  const { data: sessionStats, mutate: mutateSessions } = useApi<{
+    sessions: HermesSession[]
+    total_sessions: number
+    total_messages: number
+    total_tokens: number
+    daily_stats: any[]
+    by_source: Record<string, number>
+  }>('/sessions', 30000)
+
+  // Derived sorted sessions list from SWR data (single source of truth)
+  const sessions = useMemo<HermesSession[]>(() => {
+    const list = sessionStats?.sessions || []
+    return [...list].sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime())
+  }, [sessionStats])
+
+  const loadingSessions = !sessionStats
+
+  // Clear SWR + localStorage cache then re-fetch
+  const refreshSessions = useCallback(() => {
+    mutateSessions(undefined, { revalidate: true })
+  }, [mutateSessions])
+
   const { data: searchResults, isLoading: searching } = useApi(
     submittedQuery ? `/sessions/search?q=${encodeURIComponent(submittedQuery)}` : '',
     0
@@ -180,6 +201,13 @@ export default function ChatPanel() {
     if (!initialSelectRef.current && sessions.length > 0 && !activeSessionId) {
       initialSelectRef.current = true
       setActiveSessionId(sessions[0].id)
+    }
+  }, [sessions, activeSessionId])
+
+  // If activeSession was removed from DB (e.g. deleted externally), clear it
+  useEffect(() => {
+    if (activeSessionId && sessions.length > 0 && !sessions.some(s => s.id === activeSessionId)) {
+      setActiveSessionId(null)
     }
   }, [sessions, activeSessionId])
 
@@ -336,6 +364,7 @@ export default function ChatPanel() {
                         style={{
                           background: activeSessionId === s.id ? 'var(--hud-bg-hover)' : 'transparent',
                           borderLeft: activeSessionId === s.id ? '2px solid var(--hud-primary)' : '2px solid transparent',
+                          borderBottom: '1px solid var(--hud-border)',
                         }}
                         title="Double-click for transcript"
                       >
@@ -350,12 +379,20 @@ export default function ChatPanel() {
                           className="absolute top-1 right-1 px-1 py-0.5 text-[10px] cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
                           style={{ background: 'var(--hud-error)', color: '#fff', border: 'none', borderRadius: 2 }}
                         >✕</button>
-                        <div className="text-[12px] font-bold truncate" style={{ color: 'var(--hud-text)' }}>
+                        <div className="text-[12px] font-bold truncate pr-4" style={{ color: 'var(--hud-text)' }}>
                           {s.title || s.id.slice(0, 12) + '…'}
                         </div>
-                        <div className="text-[10px] flex items-center gap-1" style={{ color: 'var(--hud-text-dim)' }}>
+                        <div className="text-[10px] flex items-center gap-1 flex-wrap" style={{ color: 'var(--hud-text-dim)' }}>
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sourceColor(s.source) }} />
-                          {s.source} · {s.message_count}m {s.tool_call_count}t
+                          <span>{s.source}</span>
+                          {s.model && (
+                            <>
+                              <span style={{ color: 'var(--hud-border)' }}>·</span>
+                              <span style={{ color: 'var(--hud-primary)' }}>{s.model}</span>
+                            </>
+                          )}
+                          <span style={{ color: 'var(--hud-border)' }}>·</span>
+                          <span>{s.message_count}m {s.tool_call_count}t</span>
                         </div>
                       </div>
                     ))

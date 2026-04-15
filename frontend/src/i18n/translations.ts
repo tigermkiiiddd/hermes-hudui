@@ -17,6 +17,7 @@ export const translations = {
     'tab.corrections': 'Corrections',
     'tab.patterns': 'Patterns',
     'tab.settings': 'Settings',
+    'tab.constraints': 'Constraints',
 
     // Dashboard
     'dashboard.title': 'Dashboard',
@@ -455,6 +456,7 @@ export const translations = {
     'tab.corrections': '纠错',
     'tab.patterns': '模式',
     'tab.settings': '设置',
+    'tab.constraints': '约束图',
 
     // Dashboard
     'dashboard.title': '仪表盘',

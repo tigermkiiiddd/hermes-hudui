@@ -17,6 +17,7 @@ import CorrectionsPanel from './components/CorrectionsPanel'
 import PatternsPanel from './components/PatternsPanel'
 import { useI18n, I18nProvider } from './i18n'
 import SettingsPanel from './components/SettingsPanel'
+import ConstraintGraphPanel from './components/ConstraintGraphPanel'
 
 function TabContent({ tab }: { tab: TabId }) {
   switch (tab) {
@@ -32,6 +33,7 @@ function TabContent({ tab }: { tab: TabId }) {
     case 'corrections': return <CorrectionsPanel />
     case 'patterns': return <PatternsPanel />
     case 'settings': return <SettingsPanel />
+    case 'constraints': return <ConstraintGraphPanel />
     default: return <DashboardPanel />
   }
 }
@@ -50,6 +52,7 @@ const GRID_CLASS: Record<TabId, string> = {
   corrections: 'grid-cols-1',
   patterns: 'grid-cols-1 lg:grid-cols-2',
   settings: 'grid-cols-1',
+  constraints: 'grid-cols-1',
 }
 
 export default function App() {

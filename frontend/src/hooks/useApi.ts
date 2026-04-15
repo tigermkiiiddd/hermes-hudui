@@ -11,7 +11,6 @@ const fetcher = async (url: string) => {
   return res.json()
 }
 
-// Read cached data from localStorage for a given SWR key
 function getCached<T>(key: string): T | undefined {
   try {
     const raw = localStorage.getItem(CACHE_PREFIX + key)
@@ -22,26 +21,17 @@ function getCached<T>(key: string): T | undefined {
   }
 }
 
-// Save data to localStorage
 function setCache(key: string, data: any) {
   try {
     localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(data))
   } catch {
-    // localStorage full — prune old entries
-    pruneCache()
-  }
-}
-
-function pruneCache() {
-  try {
     const keys: string[] = []
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)
       if (k?.startsWith(CACHE_PREFIX)) keys.push(k)
     }
-    // Remove oldest half
     keys.slice(0, Math.ceil(keys.length / 2)).forEach(k => localStorage.removeItem(k))
-  } catch {}
+  }
 }
 
 export function useApi<T = any>(path: string, refreshInterval = 30000) {
@@ -64,7 +54,7 @@ export function useApi<T = any>(path: string, refreshInterval = 30000) {
   })
 }
 
-/** Force-revalidate all SWR caches (for manual refresh) */
+/** Force-revalidate all SWR caches */
 export function refreshAll() {
   mutate(
     (key) => typeof key === 'string' && key.startsWith('/api'),

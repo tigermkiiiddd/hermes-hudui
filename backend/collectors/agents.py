@@ -17,6 +17,13 @@ from .utils import parse_timestamp, default_hermes_dir, safe_get
 
 
 @dataclass
+class PlatformStatus:
+    name: str                           # telegram, feishu, discord, ...
+    state: str = "unknown"              # connected, fatal, retrying, ...
+    error_message: Optional[str] = None
+
+
+@dataclass
 class AgentProcess:
     name: str           # hermes, claude, codex, opencode, llama-server
     binary: str         # actual binary name for pgrep
@@ -32,6 +39,13 @@ class AgentProcess:
     tty: Optional[str] = None
     tmux_pane: Optional[str] = None
     tmux_jump_hint: Optional[str] = None
+    # enriched fields
+    role: str = "unknown"              # gateway, cli, dashboard, cron, background, other
+    profile: Optional[str] = None      # profile name from -p arg
+    variant: Optional[str] = None      # "stable" or "dev" based on binary path
+    gateway_state: Optional[str] = None  # running, startup_failed, ...
+    platforms: list[PlatformStatus] = field(default_factory=list)
+    is_wrapper: bool = False           # bash wrapper process, should be hidden
 
 
 @dataclass
@@ -292,6 +306,96 @@ def _get_process_info_macos(name: str, binary: str) -> list[AgentProcess]:
     except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
         agents.append(AgentProcess(name=name, binary=binary, running=False))
         return agents
+
+
+def _classify_process(agent: AgentProcess) -> None:
+    """Infer role, variant, profile from cmdline. Mutates agent in-place."""
+    # cmdline may be truncated — get the full version for classification
+    cmd = agent.cmdline or ""
+    if agent.pid and agent.running:
+        try:
+            result = subprocess.run(
+                ["ps", "-o", "command=", "-p", str(agent.pid)],
+                capture_output=True, text=True, timeout=3,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                cmd = result.stdout.strip()
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+            pass
+
+    # Detect bash wrappers
+    if cmd.startswith("/bin/bash") or cmd.startswith("/bin/sh"):
+        agent.is_wrapper = True
+        agent.role = "wrapper"
+        return
+
+    # Detect variant from path
+    if "hermes-agent-dev" in cmd or "hermes-dev" in cmd:
+        agent.variant = "dev"
+    elif "hermes-agent/" in cmd:
+        agent.variant = "stable"
+
+    # Detect profile from -p argument
+    import re as _re
+    m = _re.search(r'(?:^|\s)-p\s+(\S+)', cmd)
+    if m:
+        agent.profile = m.group(1)
+
+    # Detect role from subcommand
+    if " gateway" in cmd:
+        agent.role = "gateway"
+    elif " dashboard" in cmd or "hudui" in cmd:
+        agent.role = "dashboard"
+    elif " cron" in cmd:
+        agent.role = "cron"
+    elif "hermes-hudui" in cmd:
+        agent.role = "hudui"
+    else:
+        agent.role = "cli"
+
+
+def _load_gateway_state(hermes_dir: str) -> dict:
+    """Load gateway_state.json for a given hermes home dir."""
+    for candidate in [Path(hermes_dir) / "gateway_state.json",
+                      Path("/tmp/hermes-dev-home/gateway_state.json")]:
+        try:
+            import json
+            if candidate.exists():
+                return json.loads(candidate.read_text())
+        except (OSError, ValueError):
+            pass
+    return {}
+
+
+def _enrich_gateway_processes(
+    processes: list[AgentProcess],
+    hermes_dir: str,
+) -> None:
+    """Match gateway processes with gateway_state.json data."""
+    # Load all gateway state files
+    states: list[tuple[str, dict]] = []
+    for hd in [hermes_dir, "/tmp/hermes-dev-home"]:
+        p = Path(hd) / "gateway_state.json"
+        if p.exists():
+            import json
+            try:
+                states.append((hd, json.loads(p.read_text())))
+            except (OSError, ValueError):
+                pass
+
+    for agent in processes:
+        if not agent.running or agent.role != "gateway":
+            continue
+        for home_dir, state in states:
+            if state.get("pid") == agent.pid:
+                agent.gateway_state = state.get("gateway_state", "unknown")
+                for plat_name, plat_info in state.get("platforms", {}).items():
+                    agent.platforms.append(PlatformStatus(
+                        name=plat_name,
+                        state=plat_info.get("state", "unknown"),
+                        error_message=plat_info.get("error_message"),
+                    ))
+                break
 
 
 def _get_process_info(name: str, binary: str) -> list[AgentProcess]:
@@ -555,7 +659,15 @@ def collect_agents(hermes_dir: str | None = None) -> AgentsState:
                 if agent.pid == os.getppid():
                     continue
 
+            # Classify role/variant/profile from cmdline
+            _classify_process(agent)
             processes.append(agent)
+
+    # Filter out bash wrappers
+    processes = [p for p in processes if not p.is_wrapper]
+
+    # Enrich gateway processes with state.json data
+    _enrich_gateway_processes(processes, hermes_dir)
 
     # tmux discovery
     panes = _list_tmux_panes()
