@@ -9,7 +9,7 @@ interface PanelProps {
 
 export default function Panel({ title, children, className = '', noPadding = false }: PanelProps) {
   return (
-    <div className={`hud-panel ${className}`}>
+    <div className={`hud-panel ${className}`} style={{ breakInside: 'avoid', marginBottom: '0.5rem' }}>
       <div className="hud-panel-title">{title}</div>
       <div className={noPadding ? 'flex-1 overflow-hidden flex flex-col' : 'hud-panel-content'}>
         {children}

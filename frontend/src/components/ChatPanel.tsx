@@ -241,17 +241,28 @@ export default function ChatPanel() {
                     <div className="p-2 text-[12px]" style={{ color: 'var(--hud-text-dim)' }}>No sessions.</div>
                   ) : (
                     sessions.map((s) => (
-                      <button
+                      <div
                         key={s.id}
+                        className="group w-full px-2 py-1.5 text-left cursor-pointer relative"
                         onClick={() => setActiveSessionId(s.id)}
                         onDoubleClick={() => setActiveTranscript(s.id)}
-                        className="w-full px-2 py-1.5 text-left cursor-pointer"
                         style={{
                           background: activeSessionId === s.id ? 'var(--hud-bg-hover)' : 'transparent',
                           borderLeft: activeSessionId === s.id ? '2px solid var(--hud-primary)' : '2px solid transparent',
                         }}
                         title="Double-click for transcript"
                       >
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            if (!confirm('Delete this session?')) return
+                            await fetch(`/api/sessions/${s.id}`, { method: 'DELETE' })
+                            if (activeSessionId === s.id) setActiveSessionId(null)
+                            refreshSessions()
+                          }}
+                          className="absolute top-1 right-1 px-1 py-0.5 text-[10px] cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ background: 'var(--hud-error)', color: '#fff', border: 'none', borderRadius: 2 }}
+                        >✕</button>
                         <div className="text-[12px] font-bold truncate" style={{ color: 'var(--hud-text)' }}>
                           {s.title || s.id.slice(0, 12) + '…'}
                         </div>
@@ -259,7 +270,7 @@ export default function ChatPanel() {
                           <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sourceColor(s.source) }} />
                           {s.source} · {s.message_count}m {s.tool_call_count}t
                         </div>
-                      </button>
+                      </div>
                     ))
                   )
                 )}

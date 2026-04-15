@@ -381,7 +381,6 @@ export default function DashboardPanel() {
         <WhatIKnow sessions={sessions} skills={skills} />
       </Panel>
       <WhatIRemember memory={memory} user={user} corrections={corrections} />
-      <WhatISee health={health} />
 
       {/* Row 2: learning + working on + sleep */}
       <WhatImLearning skills={skills} />
@@ -393,8 +392,9 @@ export default function DashboardPanel() {
       <MyRhythm sessions={sessions} />
       <GrowthDelta snapshots={snapshots || []} />
 
-      {/* Row 4: closing statements */}
+      {/* Row 4: closing + health */}
       <ClosingStatements sessions={sessions} corrections={corrections} />
+      <WhatISee health={health} />
     </>
   )
 }

@@ -9,7 +9,6 @@ import MemoryPanel from './components/MemoryPanel'
 import SkillsPanel from './components/SkillsPanel'
 import CronPanel from './components/CronPanel'
 import ProjectsPanel from './components/ProjectsPanel'
-import HealthPanel from './components/HealthPanel'
 import AgentsPanel from './components/AgentsPanel'
 import ChatPanel from './components/ChatPanel'
 import ProfilesPanel from './components/ProfilesPanel'
@@ -26,7 +25,6 @@ function TabContent({ tab }: { tab: TabId }) {
     case 'skills': return <SkillsPanel />
     case 'cron': return <CronPanel />
     case 'projects': return <ProjectsPanel />
-    case 'health': return <HealthPanel />
     case 'agents': return <AgentsPanel />
     case 'chat': return <ChatPanel />
     case 'profiles': return <ProfilesPanel />
@@ -40,13 +38,11 @@ function TabContent({ tab }: { tab: TabId }) {
 
 // Grid layout per tab — responsive: 1 col on mobile, full on desktop
 const GRID_CLASS: Record<TabId, string> = {
-  dashboard: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
+  dashboard: 'columns-2 [&>*]:break-inside-avoid [&>*]:mb-2',
   memory: 'grid-cols-1 sm:grid-cols-2',
-  skills: 'grid-cols-1 lg:grid-cols-[2fr_1fr]',
-  sessions: 'grid-cols-1 sm:grid-cols-2',
+  skills: 'grid-cols-1 sm:grid-cols-[1fr_2fr]',
   cron: 'grid-cols-1',
   projects: 'grid-cols-1',
-  health: 'grid-cols-1 sm:grid-cols-2',
   agents: 'grid-cols-1 lg:grid-cols-2',
   chat: 'grid-cols-1',
   profiles: 'grid-cols-1',
@@ -115,9 +111,15 @@ export default function App() {
         </div>
       ) : (
         <div className="overflow-y-auto" style={{ flex: '1 1 0', height: 0, minHeight: 0 }}>
-          <div className={`grid gap-2 p-2 ${GRID_CLASS[activeTab]}`}>
-            <TabContent tab={activeTab} />
-          </div>
+          {activeTab === 'dashboard' ? (
+            <div className="p-2" style={{ columnCount: 2, columnGap: '0.5rem', width: '100%', minWidth: '600px' }}>
+              <TabContent tab={activeTab} />
+            </div>
+          ) : (
+            <div className={`grid gap-2 p-2 ${GRID_CLASS[activeTab]}`}>
+              <TabContent tab={activeTab} />
+            </div>
+          )}
         </div>
       )}
 
