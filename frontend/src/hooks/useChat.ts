@@ -287,6 +287,7 @@ export function useChat(sessionId: string | null) {
       const decoder = new TextDecoder()
       let buffer = ''
 
+      let currentEvent = ''
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -296,9 +297,42 @@ export function useChat(sessionId: string | null) {
         buffer = lines.pop() || ''
 
         for (const line of lines) {
+          // Track SSE event type
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim()
+            continue
+          }
+
           if (line.startsWith('data: ')) {
             const dataStr = line.slice(6)
             if (dataStr === '[DONE]') continue
+
+            // Handle custom tool progress events
+            if (currentEvent === 'hermes.tool.progress') {
+              try {
+                const payload = JSON.parse(dataStr)
+                setMessages(prev =>
+                  prev.map(msg => {
+                    if (msg.id !== assistantId) return msg
+                    const existing = msg.toolCalls || []
+                    // Check if this tool already tracked
+                    const found = existing.find(t => t.name === payload.tool)
+                    if (found) return msg
+                    return {
+                      ...msg,
+                      toolCalls: [...existing, {
+                        id: `tp-${Date.now()}-${existing.length}`,
+                        name: payload.tool,
+                        arguments: {},
+                        status: 'running' as const,
+                      }],
+                    }
+                  })
+                )
+              } catch { /* ignore */ }
+              currentEvent = ''
+              continue
+            }
 
             try {
               const chunk = JSON.parse(dataStr)
@@ -323,6 +357,46 @@ export function useChat(sessionId: string | null) {
                         ? { ...msg, reasoning: delta.reasoning }
                         : msg
                     )
+                  )
+                }
+                // Handle tool calls from SSE stream
+                if (delta.tool_calls && delta.tool_calls.length > 0) {
+                  setMessages(prev =>
+                    prev.map(msg => {
+                      if (msg.id !== assistantId) return msg
+                      const existing = msg.toolCalls || []
+                      const updated = [...existing]
+                      for (const tc of delta.tool_calls) {
+                        const idx = tc.index ?? updated.length
+                        if (updated[idx]) {
+                          // Append to existing
+                          if (tc.function?.name) updated[idx] = { ...updated[idx], name: updated[idx].name || tc.function.name }
+                          if (tc.function?.arguments) {
+                            try {
+                              const args = JSON.parse(tc.function.arguments)
+                              updated[idx] = { ...updated[idx], arguments: args, status: 'complete' as const }
+                            } catch {
+                              // Partial JSON — still streaming arguments
+                              updated[idx] = { ...updated[idx], status: 'running' as const }
+                            }
+                          }
+                          if (tc.id) updated[idx] = { ...updated[idx], id: tc.id }
+                        } else {
+                          // New tool call
+                          let args: Record<string, unknown> = {}
+                          if (tc.function?.arguments) {
+                            try { args = JSON.parse(tc.function.arguments) } catch { /* partial */ }
+                          }
+                          updated[idx] = {
+                            id: tc.id || `tc-${Date.now()}-${idx}`,
+                            name: tc.function?.name || '',
+                            arguments: args,
+                            status: 'running' as const,
+                          }
+                        }
+                      }
+                      return { ...msg, toolCalls: updated }
+                    })
                   )
                 }
               }

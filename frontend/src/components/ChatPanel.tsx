@@ -58,6 +58,90 @@ function TranscriptViewer({ sessionId, onClose }: { sessionId: string; onClose: 
   )
 }
 
+// ── Todo bar ────────────────────────────────────────────────────────────────
+
+const TODO_KEY = 'hud-chat-todos'
+
+interface TodoItem {
+  id: string
+  content: string
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled'
+}
+
+function loadTodos(): TodoItem[] {
+  try {
+    return JSON.parse(localStorage.getItem(TODO_KEY) || '[]')
+  } catch { return [] }
+}
+
+function saveTodos(todos: TodoItem[]) {
+  localStorage.setItem(TODO_KEY, JSON.stringify(todos))
+}
+
+function TodoBar() {
+  const [todos, setTodos] = useState<TodoItem[]>(loadTodos)
+  const [editing, setEditing] = useState(false)
+  const [newText, setNewText] = useState('')
+
+  const active = todos.filter(t => t.status === 'pending' || t.status === 'in_progress')
+  if (active.length === 0 && !editing) return null
+
+  const toggleStatus = (id: string) => {
+    const next = todos.map(t => {
+      if (t.id !== id) return t
+      const cycle: Record<string, TodoItem['status']> = { pending: 'in_progress', in_progress: 'completed', completed: 'pending' }
+      return { ...t, status: cycle[t.status] || 'pending' }
+    })
+    setTodos(next)
+    saveTodos(next)
+  }
+
+  const addTodo = () => {
+    if (!newText.trim()) return
+    const next = [...todos, { id: Date.now().toString(), content: newText.trim(), status: 'pending' as const }]
+    setTodos(next)
+    saveTodos(next)
+    setNewText('')
+  }
+
+  const removeTodo = (id: string) => {
+    const next = todos.filter(t => t.id !== id)
+    setTodos(next)
+    saveTodos(next)
+  }
+
+  const markers: Record<string, string> = { in_progress: '▸', pending: '○', completed: '✓', cancelled: '✗' }
+
+  return (
+    <div className="flex items-center gap-1 px-2 py-1 text-[12px] shrink-0 flex-wrap" style={{ borderBottom: '1px solid var(--hud-border)', background: 'var(--hud-bg-surface)' }}>
+      <span style={{ color: 'var(--hud-text-dim)' }}>📋</span>
+      {active.map(t => (
+        <span key={t.id} className="flex items-center gap-0.5 px-1 py-0.5 cursor-pointer" style={{ border: '1px solid var(--hud-border)', background: 'var(--hud-bg-panel)' }}
+          onClick={() => toggleStatus(t.id)}
+        >
+          <span style={{ color: t.status === 'in_progress' ? 'var(--hud-primary)' : 'var(--hud-text-dim)' }}>{markers[t.status]}</span>
+          <span style={{ color: 'var(--hud-text)' }}>{t.content.slice(0, 40)}</span>
+          <button onClick={(e) => { e.stopPropagation(); removeTodo(t.id) }} className="ml-0.5 cursor-pointer" style={{ color: 'var(--hud-error)', border: 'none', background: 'none', fontSize: '10px' }}>✕</button>
+        </span>
+      ))}
+      {editing ? (
+        <form onSubmit={(e) => { e.preventDefault(); addTodo() }} className="flex items-center gap-1">
+          <input
+            value={newText} onChange={e => setNewText(e.target.value)}
+            placeholder="新任务..."
+            className="px-1 py-0.5 text-[12px] outline-none" style={{ background: 'var(--hud-bg-deep)', border: '1px solid var(--hud-border)', color: 'var(--hud-text)', width: '120px' }}
+            autoFocus
+          />
+          <button type="submit" className="px-1 py-0.5 text-[11px] cursor-pointer" style={{ background: 'var(--hud-primary)', color: 'var(--hud-bg-deep)', border: 'none' }}>+</button>
+          <button type="button" onClick={() => { setEditing(false); setNewText('') }} className="px-1 py-0.5 text-[11px] cursor-pointer" style={{ background: 'var(--hud-bg-hover)', color: 'var(--hud-text-dim)', border: '1px solid var(--hud-border)' }}>✕</button>
+        </form>
+      ) : (
+        <button onClick={() => setEditing(true)} className="px-1 py-0.5 text-[11px] cursor-pointer" style={{ color: 'var(--hud-text-dim)', border: '1px solid var(--hud-border)', background: 'transparent' }}>+</button>
+      )}
+    </div>
+  )
+}
+
 // ── Main Chat Panel ──────────────────────────────────────────────────────────
 
 export default function ChatPanel() {
@@ -175,6 +259,9 @@ export default function ChatPanel() {
               </div>
             )}
           </div>
+
+          {/* Todo bar */}
+          <TodoBar />
 
           {/* Main area: sidebar + chat */}
           <div className="flex-1 flex overflow-hidden">
