@@ -105,9 +105,9 @@ export default function AuxiliaryPanel() {
                   />
                   <TextField
                     label="API Key"
-                    value={getVal(mod.key, 'api_key')}
+                    value={getVal(mod.key, 'api_key') === '***configured***' ? '' : getVal(mod.key, 'api_key')}
                     onChange={v => setVal(mod.key, 'api_key', v)}
-                    description="Key for base_url"
+                    description={getVal(mod.key, 'api_key') === '***configured***' ? '✓ Key configured in env' : 'Auto-saved to env key for the selected provider'}
                     password
                   />
                   <NumberField

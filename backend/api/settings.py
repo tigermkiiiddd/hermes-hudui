@@ -553,7 +553,24 @@ SETTINGS_SCHEMA: dict[str, dict[str, Any]] = {
 
 @router.get("/settings")
 async def get_settings():
-    return _load_yaml()
+    data = _load_yaml()
+    # Backfill auxiliary.{task}.api_key with a boolean indicator so the UI
+    # knows whether a key is configured (via env/credential-pool) without
+    # exposing the actual secret value.
+    env = _load_env()
+    aux = data.get("auxiliary", {})
+    if isinstance(aux, dict):
+        for task_key, task_cfg in aux.items():
+            if not isinstance(task_cfg, dict):
+                continue
+            if task_cfg.get("api_key"):
+                continue
+            provider = str(task_cfg.get("provider", "")).strip()
+            if provider and provider not in ("auto", "custom", ""):
+                env_key = _PROVIDER_ENV_KEYS.get(provider)
+                if env_key and env.get(env_key):
+                    task_cfg["api_key"] = "***configured***"
+    return data
 
 @router.get("/settings/schema")
 async def get_settings_schema():
@@ -695,6 +712,27 @@ async def update_setting(body: SettingUpdate):
     _atomic_write_yaml(config)
     return {"ok": True, "key": key, "target": "config"}
 
+_PROVIDER_ENV_KEYS = {
+    "openrouter": "OPENROUTER_API_KEY",
+    "zai": "GLM_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "gemini": "GOOGLE_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "kimi-coding": "KIMI_API_KEY",
+    "minimax": "MINIMAX_API_KEY",
+    "minimax-cn": "MINIMAX_CN_API_KEY",
+    "xai": "XAI_API_KEY",
+    "alibaba": "DASHSCOPE_API_KEY",
+    "opencode-zen": "OPENCODE_ZEN_API_KEY",
+    "opencode-go": "OPENCODE_GO_API_KEY",
+    "kilocode": "KILOCODE_API_KEY",
+    "huggingface": "HF_TOKEN",
+    "xiaomi": "XIAOMI_API_KEY",
+    "ai-gateway": "AI_GATEWAY_API_KEY",
+    "copilot": "COPILOT_GITHUB_TOKEN",
+}
+
+
 @router.patch("/settings/batch")
 async def update_settings_batch(body: BatchSettingUpdate):
     config = _load_yaml()
@@ -703,6 +741,35 @@ async def update_settings_batch(body: BatchSettingUpdate):
         key = item.key
         value = _coerce_value(item.value)
         upper = key.upper()
+        # Detect auxiliary.{task}.api_key — route to correct provider env var
+        if key.startswith("auxiliary.") and key.endswith(".api_key"):
+            parts = key.split(".")
+            if len(parts) == 3 and parts[0] == "auxiliary":
+                task = parts[1]
+                aux_section = config.get("auxiliary", {}).get(task, {})
+                # Check dirty values first, fall back to existing config
+                provider = None
+                for u in body.updates:
+                    if u.key == f"auxiliary.{task}.provider":
+                        provider = str(u.value).strip()
+                if not provider:
+                    provider = str(aux_section.get("provider", "")).strip()
+                # Only write to env for known providers (not auto/custom/empty)
+                raw_val = str(item.value).strip()
+                if provider and provider not in ("auto", "custom", ""):
+                    env_key = _PROVIDER_ENV_KEYS.get(provider)
+                    if env_key and raw_val and raw_val != "***configured***":
+                        env_writes.append((env_key, raw_val))
+                # For custom base_url, keep api_key in config.yaml
+                if provider == "custom" or not provider:
+                    parts_path = key.split(".")
+                    current = config
+                    for part in parts_path[:-1]:
+                        if part not in current or not isinstance(current.get(part), dict):
+                            current[part] = {}
+                        current = current[part]
+                    current[parts_path[-1]] = value
+            continue
         if upper.endswith(("_API_KEY", "_TOKEN")) or upper in ("GLM_API_KEY", "ZAI_API_KEY"):
             env_writes.append((key, str(item.value)))
             continue
