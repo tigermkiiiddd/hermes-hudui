@@ -222,6 +222,12 @@ export function useChat(sessionId: string | null) {
     return () => { cancelled = true }
   }, [sessionId])
 
+  // Keep a mutable ref to messages so sendMessage can read latest state
+  // without needing messages in its dependency array (which would re-create
+  // the callback on every message and break mid-stream).
+  const messagesRef = useRef<ChatMessage[]>(messages)
+  messagesRef.current = messages
+
   const sendMessage = useCallback(async (content: string) => {
     if (!sessionId) {
       setError('No active session')
@@ -259,6 +265,17 @@ export function useChat(sessionId: string | null) {
     }
     setMessages(prev => [...prev, assistantMsg])
 
+    // Build full conversation history for the gateway.
+    // Only include user/assistant turns (skip tool, system).
+    // The gateway uses _derive_chat_session_id(first_user_msg) so keeping
+    // the first user message constant ensures the same session is reused.
+    const currentMessages = messagesRef.current
+    const historyForGateway = currentMessages
+      .filter(m => m.role === 'user' || m.role === 'assistant')
+      .filter(m => !m.isStreaming)
+      .map(m => ({ role: m.role, content: m.content }))
+    historyForGateway.push({ role: 'user', content })
+
     const controller = new AbortController()
     abortRef.current = controller
 
@@ -269,7 +286,7 @@ export function useChat(sessionId: string | null) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: sessionId,
-          messages: [{ role: 'user', content }],
+          messages: historyForGateway,
           stream: true,
         }),
         signal: controller.signal,

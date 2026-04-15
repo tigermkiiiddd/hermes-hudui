@@ -257,12 +257,11 @@ async def completions(request: CompletionsRequest) -> StreamingResponse:
         "stream": True,
     }
 
-    # If session_id given, try to resume that gateway session
+    # NOTE: We do NOT send X-Hermes-Session-Id.  Session resumption requires
+    # API_SERVER_KEY which may not be configured.  Instead, the frontend sends
+    # the full conversation history so the gateway's _derive_chat_session_id()
+    # (hash of system_prompt + first user message) produces a stable session ID.
     headers: dict[str, str] = {"Content-Type": "application/json"}
-    if request.session_id:
-        gw_sid = chat_engine._gateway_session_ids.get(request.session_id)
-        if gw_sid:
-            headers["X-Hermes-Session-Id"] = gw_sid
 
     def event_generator():
         try:
@@ -279,11 +278,6 @@ async def completions(request: CompletionsRequest) -> StreamingResponse:
                         body += chunk
                     yield f"data: {json.dumps({'error': {'message': f'Gateway {resp.status_code}: {body[:300]}'}})}\n\n"
                     return
-
-                # Capture gateway session ID
-                gw_sid = resp.headers.get("x-hermes-session-id")
-                if gw_sid and request.session_id:
-                    chat_engine._gateway_session_ids[request.session_id] = gw_sid
 
                 for line in resp.iter_lines():
                     if not line:
