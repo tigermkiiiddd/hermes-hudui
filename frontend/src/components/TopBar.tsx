@@ -166,19 +166,20 @@ export default function TopBar({ activeTab, onTabChange }: TopBarProps) {
         {time.toLocaleTimeString('en-US', { hour12: false })}
       </span>
 
-      <button
-        onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
-        className="ml-2 px-2 py-0.5 text-[12px] font-bold tracking-wider cursor-pointer shrink-0"
+      <select
+        value={lang}
+        onChange={e => setLang(e.target.value as any)}
+        className="ml-2 px-2 py-0.5 text-[12px] font-bold tracking-wider cursor-pointer shrink-0 hud-lang-select"
         style={{
           color: 'var(--hud-primary)',
           border: '1px solid var(--hud-primary)',
           background: 'transparent',
           minHeight: '24px',
         }}
-        title={lang === 'en' ? 'Switch to Chinese' : '切换到英文'}
       >
-        {lang === 'en' ? '中文' : 'EN'}
-      </button>
+        <option value="en" style={{ background: '#111' }}>EN</option>
+        <option value="zh" style={{ background: '#111' }}>中文</option>
+      </select>
     </div>
   )
 }
