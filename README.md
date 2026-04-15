@@ -1,17 +1,13 @@
-# ☤ Hermes HUD — Web UI
+# hermes-hudui (fork)
 
-A browser-based consciousness monitor for [Hermes](https://github.com/nousresearch/hermes-agent), the AI agent with persistent memory.
+This is a fork of [joeynyc/hermes-hudui](https://github.com/joeynyc/hermes-hudui) — a web dashboard for [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 
-Same data, same soul, same dashboard that made the [TUI version](https://github.com/joeynyc/hermes-hud) popular — now in your browser.
-
-![Token Costs](assets/dashboard-costs.png)
-
-![Agent Profiles](assets/profiles.png)
+Designed to be used with our [hermes-agent fork](https://github.com/tigermkiiiddd/hermes-agent). The two projects share the same `state.db`, so all data (projects, todos, session history) is visible in both CLI and web dashboard in real time.
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/joeynyc/hermes-hudui.git
+git clone https://github.com/tigermkiiiddd/hermes-hudui.git
 cd hermes-hudui
 ./install.sh
 hermes-hudui
@@ -19,22 +15,51 @@ hermes-hudui
 
 Open http://localhost:3001
 
-**Requirements:** Python 3.11+, Node.js 18+, a running Hermes agent with data in `~/.hermes/`
+**Requirements:** Python 3.11+, Node.js 18+, a running Hermes agent (our fork) with data in `~/.hermes/`
 
 On future runs:
 ```bash
 source venv/bin/activate && hermes-hudui
 ```
 
-## What's Inside
+## What's Changed from Upstream
 
-13 tabs covering everything your agent knows about itself — identity, memory, skills, sessions, cron jobs, projects, health, costs, patterns, corrections, and live chat.
+- **Dashboard masonry layout** — CSS columns waterfall layout instead of grid, so panels don't waste vertical space with equal heights
+- **Sessions & Health merged into Dashboard** — fewer tabs, everything at a glance on the landing page
+- **Projects panel** — reads from `state.db` projects table, matches the `project` tool in our hermes-agent fork
+- **Settings panel** — skill toggle, configuration editing
+- **Chat Composer** — Cmd/Ctrl+Enter to send, Enter for newline (IME-friendly, no conflict with Chinese input)
+- **Session delete** — delete sessions from the sidebar
+- **Chinese translation rewrite** — natural colloquial Chinese, not machine-translated
+- **localStorage caching** — `useApi` with `fallbackData` + `onSuccess` for instant loading on revisit
+- **LAN access** — listens on `0.0.0.0` by default, accessible from other devices on the network
 
-Updates in real-time via WebSocket. No manual refresh needed.
+## Architecture
 
-## Language Support
+```
+React Frontend (Vite + Tailwind + SWR)
+    ↓ /api/* (proxied in dev)
+FastAPI Backend (Python)
+    ↓ collectors/           ↓ chat/engine.py
+~/.hermes/state.db          hermes CLI (subprocess)
+```
 
-English (default) and Chinese. Click the language toggle at the far right of the header bar to switch. The choice persists to localStorage. When set to Chinese, chat responses from your agent also come back in Chinese.
+### Development
+
+```bash
+# Full-stack dev mode
+hermes-hudui --dev          # Terminal 1: backend on :3001 (auto-reload)
+cd frontend && npm run dev  # Terminal 2: frontend on :5173 (proxies /api → :3001)
+```
+
+### Build & Deploy
+
+```bash
+cd frontend && npm run build
+rm -rf backend/static/* && cp -r frontend/dist/* backend/static/
+```
+
+Then restart `hermes-hudui`.
 
 ## Themes
 
@@ -48,13 +73,13 @@ Four themes switchable with `t`: **Neural Awakening** (cyan), **Blade Runner** (
 | `t` | Theme picker |
 | `Ctrl+K` | Command palette |
 
-## Relationship to the TUI
+## Syncing with Upstream
 
-This is the browser companion to [hermes-hud](https://github.com/joeynyc/hermes-hud). Both read from the same `~/.hermes/` data directory independently — use either one, or both at the same time.
-
-The Web UI is fully standalone and adds features the TUI doesn't have: dedicated Memory, Skills, and Sessions tabs; per-model token cost tracking; command palette; live chat; theme switcher.
-
-If you also have the TUI installed, you can enable it with `pip install hermes-hudui[tui]`.
+```bash
+git remote add upstream https://github.com/joeynyc/hermes-hudui.git
+git fetch upstream
+git rebase upstream/main
+```
 
 ## Platform Support
 
@@ -62,14 +87,4 @@ macOS · Linux · WSL
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
----
-
-<a href="https://www.star-history.com/?repos=joeynyc%2Fhermes-hudui&type=date&logscale=&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=joeynyc/hermes-hudui&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=joeynyc/hermes-hudui&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=joeynyc/hermes-hudui&type=date&legend=top-left" />
- </picture>
-</a>
+MIT — see [LICENSE](LICENSE). Same license as upstream.
