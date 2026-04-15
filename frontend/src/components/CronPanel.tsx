@@ -93,39 +93,39 @@ function JobForm({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--hud-text-dim)' }}>
-            {t('cron.formName', '名称')}
+            {t('cron.formName')}
           </label>
-          <input style={fieldStyle} value={form.name} onChange={e => set('name', e.target.value)} placeholder="可选" />
+          <input style={fieldStyle} value={form.name} onChange={e => set('name', e.target.value)} placeholder={t('cron.formName', 'Name')} />
         </div>
         <div>
           <label className="block text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--hud-text-dim)' }}>
-            {t('cron.schedule', '调度')} *
+            {t('cron.schedule')} *
           </label>
           <input style={fieldStyle} value={form.schedule} onChange={e => set('schedule', e.target.value)}
-            placeholder="30m / every 2h / 0 9 * * *" />
+            placeholder={t('cron.formScheduleHint')} />
         </div>
       </div>
 
       {/* Prompt */}
       <div>
         <label className="block text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--hud-text-dim)' }}>
-          Prompt *
+          {t('cron.formPrompt')} *
         </label>
         <textarea style={{ ...fieldStyle, minHeight: 80, resize: 'vertical' }}
-          value={form.prompt} onChange={e => set('prompt', e.target.value)} placeholder="任务指令（自包含，agent 无上下文）" />
+          value={form.prompt} onChange={e => set('prompt', e.target.value)} placeholder={t('cron.formPromptHint')} />
       </div>
 
       {/* Skills + Deliver + Repeat */}
       <div className="grid grid-cols-3 gap-3">
         <div>
           <label className="block text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--hud-text-dim)' }}>
-            {t('cron.skills', '关联技能')}
+            {t('cron.skills')}
           </label>
           <input style={fieldStyle} value={form.skills} onChange={e => set('skills', e.target.value)} placeholder="skill1, skill2" />
         </div>
         <div>
           <label className="block text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--hud-text-dim)' }}>
-            {t('cron.deliver', '推送至')}
+            {t('cron.deliver')}
           </label>
           <select style={fieldStyle} value={form.deliver} onChange={e => set('deliver', e.target.value)}>
             <option value="local">local</option>
@@ -136,10 +136,10 @@ function JobForm({
         </div>
         <div>
           <label className="block text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--hud-text-dim)' }}>
-            {t('cron.repeat', '重复次数')}
+            {t('cron.repeat')}
           </label>
           <input style={fieldStyle} type="number" value={form.repeat} onChange={e => setNum('repeat', e.target.value)}
-            placeholder="空=永久" min={1} />
+            placeholder={t('cron.repeatHint')} min={1} />
         </div>
       </div>
 
@@ -149,19 +149,19 @@ function JobForm({
           <label className="block text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--hud-text-dim)' }}>
             Model
           </label>
-          <input style={fieldStyle} value={form.model} onChange={e => set('model', e.target.value)} placeholder="默认" />
+          <input style={fieldStyle} value={form.model} onChange={e => set('model', e.target.value)} placeholder={t('cron.formDefault', 'Default')} />
         </div>
         <div>
           <label className="block text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--hud-text-dim)' }}>
             Provider
           </label>
-          <input style={fieldStyle} value={form.provider} onChange={e => set('provider', e.target.value)} placeholder="默认" />
+          <input style={fieldStyle} value={form.provider} onChange={e => set('provider', e.target.value)} placeholder={t('cron.formDefault', 'Default')} />
         </div>
         <div>
           <label className="block text-[11px] uppercase tracking-wider mb-1" style={{ color: 'var(--hud-text-dim)' }}>
             Script
           </label>
-          <input style={fieldStyle} value={form.script} onChange={e => set('script', e.target.value)} placeholder="可选 .py 脚本" />
+          <input style={fieldStyle} value={form.script} onChange={e => set('script', e.target.value)} placeholder={t('cron.formScriptHint', '.py script')} />
         </div>
       </div>
 
